@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Анализатор PDF: группы С5 и С10</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <!-- PDF.js (без воркера, отключим в app.js) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js" crossorigin="anonymous"></script>
+  </head>
+  <body>
+    <main class="container">
+      <section class="card">
+        <h1>Анализ PDF по ключам: С5 и С10</h1>
+        <p class="muted">Выберите PDF-файл. Страница извлечёт текст и сгруппирует строки, где встречаются ключи.</p>
+
+        <div class="uploader">
+          <label for="pdfInput" class="button">Выбрать PDF</label>
+          <input id="pdfInput" type="file" accept="application/pdf" />
+          <span id="fileName" class="file-name">Файл не выбран</span>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--muted);font-size:14px;">
+          <input id="toggleGroupDetails" type="checkbox" /> Показывать строки внутри категорий
+        </label>
+
+        <label style="display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--muted);font-size:14px;">
+          <input id="toggleDebug" type="checkbox" /> Режим отладки (логи в консоли)
+        </label>
+
+        <div id="status" class="status"></div>
+      </section>
+
+      <section id="results" class="results hidden">
+        <div class="summary">
+          <div><strong>Страниц:</strong> <span id="pagesCount">–</span></div>
+          <div><strong>Совпадений С5:</strong> <span id="c5Count">0</span></div>
+          <div><strong>Совпадений С10:</strong> <span id="c10Count">0</span></div>
+        </div>
+
+        <details open>
+          <summary>Категории С5 (<span id="c5GroupedTotal">0</span>)</summary>
+          <ol id="groupC5List" class="result-list"></ol>
+        </details>
+
+        <details>
+          <summary>Категории С10 (<span id="c10GroupedTotal">0</span>)</summary>
+          <ol id="groupC10List" class="result-list"></ol>
+        </details>
+
+        <details>
+          <summary>Без категории С5</summary>
+          <ol id="ungroupedC5" class="result-list"></ol>
+        </details>
+
+        <details>
+          <summary>Без категории С10</summary>
+          <ol id="ungroupedC10" class="result-list"></ol>
+        </details>
+
+        <details open>
+          <summary>Строки с С5 (<span id="c5CountInline">0</span>)</summary>
+          <ol id="listC5" class="result-list"></ol>
+        </details>
+
+        <details>
+          <summary>Строки с С10 (<span id="c10CountInline">0</span>)</summary>
+          <ol id="listC10" class="result-list"></ol>
+        </details>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+  </html>
+
+
