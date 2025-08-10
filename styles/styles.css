@@ -38,6 +38,7 @@ body {
 
 h1 { font-size: 20px; margin: 0 0 8px; }
 .muted { color: var(--muted); margin: 0 0 16px; }
+.dev-only { color: var(--muted); font-size: 14px; }
 
 .uploader {
   display: flex;
@@ -99,6 +100,85 @@ h1 { font-size: 20px; margin: 0 0 8px; }
   background: rgba(255,255,255,0.06);
   color: var(--text);
   border: 1px solid var(--glass-border);
+}
+
+.select {
+  appearance: none;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  backdrop-filter: blur(10px) saturate(140%);
+}
+
+.controls {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.control-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.control {
+  display: grid;
+  gap: 6px;
+}
+
+.control label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  backdrop-filter: blur(10px) saturate(140%);
+}
+
+.btns-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.icon {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.error-text {
+  color: #fda4af; /* розово-красный */
+  font-size: 12px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  background: rgba(255, 99, 132, 0.15);
+  color: #fecaca;
+  border: 1px solid rgba(255, 99, 132, 0.35);
+  padding: 10px 14px;
+  border-radius: 10px;
+  backdrop-filter: blur(10px) saturate(140%);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  z-index: 100;
 }
 
 input[type="file"] {

@@ -4,15 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Анализатор PDF: группы С5 и С10</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles/styles.css" />
     <!-- PDF.js (без воркера, отключим в app.js) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js" crossorigin="anonymous"></script>
+    <!-- jsPDF для генерации PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
+    <!-- Наш модуль PDF -->
+    <script src="./js/pdf.js"></script>
+    <!-- Иконочный шрифт (Material Symbols) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
   </head>
   <body>
     <main class="container">
       <section class="card">
-        <h1>Анализ PDF по ключам: С5 и С10</h1>
-        <p class="muted">Выберите PDF-файл. Страница извлечёт текст и сгруппирует строки, где встречаются ключи.</p>
+        <h1>Анализатор отчетов пиццерии</h1>
+        <p class="muted">Загрузите PDF-отчет или текст для автоматического формирования топа нарушений.</p>
 
         <div class="mode-switch" role="tablist" aria-label="Способ ввода">
           <button id="modePdfBtn" class="seg active" role="tab" aria-selected="true">PDF</button>
@@ -21,7 +27,7 @@
 
         <div id="inputPdf" class="input-mode">
           <div class="uploader">
-            <label for="pdfInput" class="button">Выбрать PDF</label>
+            <label for="pdfInput" class="button">Загрузить PDF</label>
             <input id="pdfInput" type="file" accept="application/pdf" />
             <span id="fileName" class="file-name">Файл не выбран</span>
           </div>
@@ -35,13 +41,48 @@
           </div>
         </div>
 
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--muted);font-size:14px;">
-          <input id="toggleGroupDetails" type="checkbox" /> Показывать строки внутри категорий
-        </label>
+        <div class="control-row">
+          <label id="labelToggleGroupDetails" class="dev-only hidden">
+            <input id="toggleGroupDetails" type="checkbox" /> Показывать строки внутри категорий
+          </label>
+          <label id="labelToggleDebug" class="dev-only hidden">
+            <input id="toggleDebug" type="checkbox" /> Режим отладки (логи в консоли)
+          </label>
+        </div>
 
-        <label style="display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--muted);font-size:14px;">
-          <input id="toggleDebug" type="checkbox" /> Режим отладки (логи в консоли)
-        </label>
+        <div class="controls">
+          <div class="control">
+            <label for="topSelect">Выбор ТОП</label>
+            <select id="topSelect" class="select">
+              <option value="3">ТОП-3</option>
+              <option value="5">ТОП-5</option>
+              <option value="10">ТОП-10</option>
+            </select>
+            <div id="errTop" class="error-text hidden"></div>
+          </div>
+
+          <div class="control">
+            <label for="storeSelect">Пиццерия</label>
+            <input id="storeSearch" class="input" type="text" placeholder="Поиск…" />
+            <select id="storeSelect" class="select">
+              <option value="">— выбрать —</option>
+            </select>
+            <div id="errStore" class="error-text hidden"></div>
+          </div>
+
+          <div class="control">
+            <label for="periodSelect">Период</label>
+            <select id="periodSelect" class="select">
+              <option value="">— выбрать —</option>
+            </select>
+            <div id="errPeriod" class="error-text hidden"></div>
+          </div>
+
+          <div class="btns-row">
+            <button id="previewPdfBtn" class="button" type="button"><span class="icon">visibility</span>Предпросмотр</button>
+            <button id="downloadPdfBtn" class="button ghost" type="button"><span class="icon">download</span>Скачать</button>
+          </div>
+        </div>
 
         <div id="rulesBanner" class="rules-banner hidden">
           <div class="rules-banner-title">База категорий не загружена</div>
@@ -77,22 +118,22 @@
           <ol id="groupC10List" class="result-list"></ol>
         </details>
 
-        <details>
+        <details id="devUngroupedC5" class="hidden">
           <summary>Без категории С5</summary>
           <ol id="ungroupedC5" class="result-list"></ol>
         </details>
 
-        <details>
+        <details id="devUngroupedC10" class="hidden">
           <summary>Без категории С10</summary>
           <ol id="ungroupedC10" class="result-list"></ol>
         </details>
 
-        <details open>
+        <details id="devListC5" class="hidden">
           <summary>Строки с С5 (<span id="c5CountInline">0</span>)</summary>
           <ol id="listC5" class="result-list"></ol>
         </details>
 
-        <details>
+        <details id="devListC10" class="hidden">
           <summary>Строки с С10 (<span id="c10CountInline">0</span>)</summary>
           <ol id="listC10" class="result-list"></ol>
         </details>
@@ -107,8 +148,7 @@
       </div>
     </div>
 
-    <script src="./app.js"></script>
+    <script src="./js/app.js"></script>
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   </body>
   </html>
-
-
