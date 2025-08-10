@@ -45,6 +45,43 @@ h1 { font-size: 20px; margin: 0 0 8px; }
   gap: 12px;
 }
 
+.mode-switch {
+  display: inline-flex;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: 12px;
+  backdrop-filter: blur(10px) saturate(140%);
+}
+
+.mode-switch .seg {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mode-switch .seg.active {
+  background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06));
+  border: 1px solid var(--glass-border);
+}
+
+.text-area {
+  width: 100%;
+  resize: vertical;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text);
+  padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .button {
   display: inline-flex;
   align-items: center;

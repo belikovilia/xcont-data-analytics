@@ -142,15 +142,22 @@
       for (let i = 0; i < matches.length; i += 1) {
         const segStart = matches[i].end;
         const segEnd = i + 1 < matches.length ? matches[i + 1].start : line.length;
-        const segText = line.slice(segStart, segEnd).trim();
-        const multi = matches[i].multi;
+        let segText = line.slice(segStart, segEnd).trim();
+        let segMul = matches[i].multi;
+        // Учтём множители в любом месте сегмента (включая хвост)
+        const inline = parseInlineMultipliers(segText);
+        if (inline.mul > 1) {
+          segMul *= inline.mul;
+          segText = inline.text;
+          debugLog('INLINE_MUL', key, { mul: inline.mul, after: segMul });
+        }
         if (segText.length > 0 && /\p{L}|\p{N}/u.test(segText)) {
-          const text = `${key}${multi > 1 ? `*${multi}` : ''} ${segText}`.trim();
-          segments.push({ text, matchText: segText, count: multi });
-          debugLog('SEG', key, { seg: segText, multi });
+          const text = `${key}${segMul > 1 ? `*${segMul}` : ''} ${segText}`.trim();
+          segments.push({ text, matchText: segText, count: segMul });
+          debugLog('SEG', key, { seg: segText, multi: segMul });
         } else {
-          pending.push({ multi });
-          debugLog('PENDING', key, { multi });
+          pending.push({ multi: segMul });
+          debugLog('PENDING', key, { multi: segMul });
         }
       }
     }
@@ -158,6 +165,23 @@
       debugLog('PENDING_LEFT', key, pending.map((p) => p.multi));
     }
     return segments;
+  }
+
+  function parseInlineMultipliers(text) {
+    // Возвращает очищенный текст и произведение всех найденных множителей в сегменте
+    // Поддерживаем символы множителя: *, x, X, х, Х, ×, допускаем отсутствие пробела
+    let mul = 1;
+    const token = /([xX×*хХ])\s*(\d+)/gu;
+    let m;
+    while ((m = token.exec(text)) !== null) {
+      const value = parseInt(m[2], 10);
+      if (!Number.isNaN(value) && value > 1) mul *= value;
+    }
+    if (mul > 1) {
+      // Удаляем все встреченные множители из текста
+      text = text.replace(/\s*[xX×*хХ]\s*\d+\s*(?=[\s).,;:-]|$)/gu, ' ').replace(/\s+/g, ' ').trim();
+    }
+    return { text, mul };
   }
 
   function renderList(listEl, items) {
@@ -546,6 +570,82 @@
     renderGroups(groupC5List, c5Groups, toggle.checked);
     renderGroups(groupC10List, c10Groups, toggle.checked);
   });
+
+  // Переключение режимов ввода
+  const modePdfBtn = document.getElementById('modePdfBtn');
+  const modeTextBtn = document.getElementById('modeTextBtn');
+  const inputPdf = document.getElementById('inputPdf');
+  const inputText = document.getElementById('inputText');
+  function setMode(mode) {
+    if (mode === 'pdf') {
+      modePdfBtn.classList.add('active');
+      modeTextBtn.classList.remove('active');
+      inputPdf.classList.remove('hidden');
+      inputText.classList.add('hidden');
+    } else {
+      modeTextBtn.classList.add('active');
+      modePdfBtn.classList.remove('active');
+      inputText.classList.remove('hidden');
+      inputPdf.classList.add('hidden');
+    }
+  }
+  modePdfBtn.addEventListener('click', () => setMode('pdf'));
+  modeTextBtn.addEventListener('click', () => setMode('text'));
+
+  // Анализ текста из textarea
+  const analyzeTextBtn = document.getElementById('analyzeTextBtn');
+  const textAreaInput = document.getElementById('textAreaInput');
+  analyzeTextBtn.addEventListener('click', () => {
+    const text = textAreaInput.value || '';
+    analyzePlainText(text);
+  });
+
+  function analyzePlainText(text) {
+    resetUI();
+    const preloader = document.getElementById('preloader');
+    const loaderText = document.getElementById('loaderText');
+    preloader.classList.remove('hidden');
+    loaderText.textContent = 'Подготовка текста…';
+
+    try {
+      // Разобьём текст на строки. Первая страница в текстовом режиме не нужна —
+      // но у нас нет разметки страниц, поэтому просто анализируем всё.
+      const lines = text.split(/\r?\n/);
+      const pageTexts = [{ page: 2, lines }];
+
+      loaderText.textContent = 'Анализ…';
+      const { c5, c10 } = analyze(pageTexts);
+      const c5Total = sumCounts(c5);
+      const c10Total = sumCounts(c10);
+
+      c5CountEl.textContent = String(c5Total);
+      c10CountEl.textContent = String(c10Total);
+      c5CountInlineEl.textContent = String(c5.length);
+      c10CountInlineEl.textContent = String(c10.length);
+      renderList(listC5, c5);
+      renderList(listC10, c10);
+
+      const c5Groups = buildGroupCounters(c5, rules.C5);
+      const c10Groups = buildGroupCounters(c10, rules.C10);
+      const showDetails = document.getElementById('toggleGroupDetails').checked;
+      renderGroups(groupC5List, c5Groups, showDetails);
+      renderGroups(groupC10List, c10Groups, showDetails);
+      renderUngrouped(ungroupedC5, c5Groups.ungrouped);
+      renderUngrouped(ungroupedC10, c10Groups.ungrouped);
+      c5GroupedTotalEl.textContent = String(c5Groups.summary.reduce((a, b) => a + b.count, 0));
+      c10GroupedTotalEl.textContent = String(c10Groups.summary.reduce((a, b) => a + b.count, 0));
+
+      const toggle = document.getElementById('toggleGroupDetails');
+      toggle._last = { c5Groups, c10Groups };
+      resultsEl.classList.remove('hidden');
+      document.getElementById('preloader').classList.add('hidden');
+      setStatus('Готово');
+    } catch (err) {
+      console.error(err);
+      document.getElementById('preloader').classList.add('hidden');
+      setStatus('Ошибка при анализе текста');
+    }
+  }
 })();
 
 

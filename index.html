@@ -14,10 +14,25 @@
         <h1>Анализ PDF по ключам: С5 и С10</h1>
         <p class="muted">Выберите PDF-файл. Страница извлечёт текст и сгруппирует строки, где встречаются ключи.</p>
 
-        <div class="uploader">
-          <label for="pdfInput" class="button">Выбрать PDF</label>
-          <input id="pdfInput" type="file" accept="application/pdf" />
-          <span id="fileName" class="file-name">Файл не выбран</span>
+        <div class="mode-switch" role="tablist" aria-label="Способ ввода">
+          <button id="modePdfBtn" class="seg active" role="tab" aria-selected="true">PDF</button>
+          <button id="modeTextBtn" class="seg" role="tab" aria-selected="false">Текст</button>
+        </div>
+
+        <div id="inputPdf" class="input-mode">
+          <div class="uploader">
+            <label for="pdfInput" class="button">Выбрать PDF</label>
+            <input id="pdfInput" type="file" accept="application/pdf" />
+            <span id="fileName" class="file-name">Файл не выбран</span>
+          </div>
+        </div>
+
+        <div id="inputText" class="input-mode hidden">
+          <textarea id="textAreaInput" class="text-area" rows="8" placeholder="Вставьте текст для анализа…"></textarea>
+          <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+            <button id="analyzeTextBtn" class="button" type="button">Анализировать текст</button>
+            <span class="muted" style="font-size:12px;">Вставьте содержимое отчёта. Форматирование строк сохраняется.</span>
+          </div>
         </div>
 
         <label style="display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--muted);font-size:14px;">
