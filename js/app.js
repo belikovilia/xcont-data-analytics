@@ -1,6 +1,5 @@
 (function () {
   const input = document.getElementById('pdfInput');
-  const fileNameEl = document.getElementById('fileName');
   const statusEl = document.getElementById('status');
   const resultsEl = document.getElementById('results');
   const pagesCountEl = document.getElementById('pagesCount');
@@ -559,9 +558,43 @@
 
   // Генерация PDF вынесена в pdf.js (window.Pdf.generateTopReport)
 
+  // Показывает выбранный файл внутри зоны dnd
+  function updateDropZoneSelectedFile(file) {
+    const dropZone = document.getElementById('dropZone');
+    if (!dropZone) return;
+    const content = dropZone.querySelector('.drop-zone-content');
+    if (!content) return;
+
+    let chip = dropZone.querySelector('.file-selected');
+    if (file) {
+      if (!chip) {
+        chip = document.createElement('div');
+        chip.className = 'file-selected';
+        chip.innerHTML = '<span class="name"></span><button class="remove" title="Убрать">✕</button>';
+        content.appendChild(chip);
+      }
+      const nameEl = chip.querySelector('.name');
+      if (nameEl) nameEl.textContent = file.name;
+
+      const pdfInput = document.getElementById('pdfInput');
+      const removeBtn = chip.querySelector('.remove');
+      if (removeBtn) {
+        removeBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          if (pdfInput) pdfInput.value = '';
+          chip.remove();
+          const results = document.getElementById('results');
+          if (results) results.classList.add('hidden');
+        };
+      }
+    } else {
+      if (chip) chip.remove();
+    }
+  }
+
   async function handleFile(file) {
     resetUI();
-    fileNameEl.textContent = file ? file.name : 'Файл не выбран';
+    updateDropZoneSelectedFile(file);
     if (!file) return;
     try {
       // показать прелоадер
@@ -737,14 +770,49 @@
   (function initPizzeriaSearch() {
     const search = document.getElementById('storeSearch');
     const sel = document.getElementById('storeSelect');
+    const results = document.getElementById('storeResults');
     if (!search || !sel) return;
     search.addEventListener('input', () => {
       const q = (search.value || '').trim().toLowerCase();
-      for (const opt of sel.options) {
-        if (!opt.value) continue; // пропустить placeholder
-        const visible = !q || opt.textContent.toLowerCase().includes(q);
-        opt.hidden = !visible;
+      if (!q) {
+        if (results) { results.innerHTML = ''; results.classList.add('hidden'); }
+        return;
       }
+      const matches = [];
+      for (const opt of sel.options) {
+        if (!opt.value) continue;
+        const txt = opt.textContent || '';
+        if (txt.toLowerCase().includes(q)) matches.push({ value: opt.value, text: txt });
+      }
+      if (results) {
+        results.innerHTML = '';
+        if (matches.length === 0) {
+          const div = document.createElement('div');
+          div.className = 'dropdown-item';
+          div.textContent = 'Ничего не найдено';
+          div.style.opacity = '0.7';
+          results.appendChild(div);
+        } else {
+          for (const m of matches.slice(0, 50)) {
+            const div = document.createElement('div');
+            div.className = 'dropdown-item';
+            div.textContent = m.text;
+            div.addEventListener('click', () => {
+              sel.value = m.value;
+              results.classList.add('hidden');
+              search.value = '';
+            });
+            results.appendChild(div);
+          }
+        }
+        results.classList.remove('hidden');
+      }
+    });
+    // Закрывать подсказки по клику вне
+    document.addEventListener('click', (e) => {
+      if (!results) return;
+      if (e.target === search || e.target === results || results.contains(e.target)) return;
+      results.classList.add('hidden');
     });
   })();
 
@@ -875,6 +943,54 @@
       setStatus('Ошибка при анализе текста');
     }
   }
+
+  // Drag and Drop функциональность
+  (function initDragAndDrop() {
+    const dropZone = document.getElementById('dropZone');
+    const pdfInput = document.getElementById('pdfInput');
+    if (!dropZone || !pdfInput) return;
+
+    // Предотвращение стандартного поведения браузера
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, preventDefaults, false);
+      document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Визуальная обратная связь при перетаскивании
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
+    });
+
+    // Обработка сброшенных файлов
+    dropZone.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      const file = dt && dt.files && dt.files[0];
+      if (!file) return;
+      if (file.type !== 'application/pdf') {
+        showToast('Пожалуйста, выберите PDF файл');
+        return;
+      }
+      handleFile(file);
+    }, false);
+
+    // Клик по зоне для выбора файла
+    dropZone.addEventListener('click', () => pdfInput.click());
+
+    // Обработка выбора файла через input
+    pdfInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) handleFile(file);
+    });
+  })();
 })();
 
 

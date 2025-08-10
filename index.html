@@ -26,10 +26,15 @@
         </div>
 
         <div id="inputPdf" class="input-mode">
-          <div class="uploader">
-            <label for="pdfInput" class="button">Загрузить PDF</label>
-            <input id="pdfInput" type="file" accept="application/pdf" />
-            <span id="fileName" class="file-name">Файл не выбран</span>
+          <div id="dropZone" class="drop-zone">
+            <div class="drop-zone-content">
+              <div class="drop-zone-icon">📄</div>
+              <div class="drop-zone-text">
+                <span class="drop-zone-primary">Перетащите PDF файл сюда</span>
+                <span class="drop-zone-secondary">или нажмите для выбора</span>
+              </div>
+            </div>
+            <input id="pdfInput" type="file" accept="application/pdf" style="display: none;" />
           </div>
         </div>
 
@@ -67,6 +72,7 @@
             <select id="storeSelect" class="select">
               <option value="">— выбрать —</option>
             </select>
+            <div id="storeResults" class="dropdown hidden"></div>
             <div id="errStore" class="error-text hidden"></div>
           </div>
 
