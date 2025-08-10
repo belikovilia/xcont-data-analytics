@@ -43,6 +43,20 @@
           <input id="toggleDebug" type="checkbox" /> Режим отладки (логи в консоли)
         </label>
 
+        <div id="rulesBanner" class="rules-banner hidden">
+          <div class="rules-banner-title">База категорий не загружена</div>
+          <div class="rules-banner-desc">Положите файлы правил рядом со страницей: <code>rules_c5.txt</code> и <code>rules_c10.txt</code>, или загрузите ниже вручную.</div>
+          <div class="rules-actions">
+            <label class="button ghost">Загрузить C5
+              <input id="rulesC5File" type="file" accept=".txt" />
+            </label>
+            <label class="button ghost">Загрузить C10
+              <input id="rulesC10File" type="file" accept=".txt" />
+            </label>
+            <span id="rulesStatus" class="file-name">C5: —, C10: —</span>
+          </div>
+        </div>
+
         <div id="status" class="status"></div>
       </section>
 
