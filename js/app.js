@@ -16,6 +16,11 @@
   const ungroupedC5 = document.getElementById('ungroupedC5');
   const ungroupedC10 = document.getElementById('ungroupedC10');
 
+  // Единое состояние приложения
+  const AppState = {
+    lastGroups: null, // { c5Groups, c10Groups }
+  };
+
   // Отключаем воркер, чтобы можно было открыть файл просто двойным кликом по index.html
   if (window['pdfjsLib']) {
     try {
@@ -56,6 +61,38 @@
     ungroupedC5.innerHTML = '';
     ungroupedC10.innerHTML = '';
     resultsEl.classList.add('hidden');
+  }
+
+  function renderAnalysisResults(c5, c10) {
+    const c5Total = sumCounts(c5);
+    const c10Total = sumCounts(c10);
+
+    c5CountEl.textContent = String(c5Total);
+    c10CountEl.textContent = String(c10Total);
+    c5CountInlineEl.textContent = String(c5.length);
+    c10CountInlineEl.textContent = String(c10.length);
+    renderList(listC5, c5);
+    renderList(listC10, c10);
+
+    // Группировка по ключевым словам
+    const c5Groups = buildGroupCounters(c5, rules.C5);
+    const c10Groups = buildGroupCounters(c10, rules.C10);
+    const showDetailsEl = document.getElementById('toggleGroupDetails');
+    const showDetails = !!(showDetailsEl && showDetailsEl.checked);
+    renderGroups(groupC5List, c5Groups, showDetails);
+    renderGroups(groupC10List, c10Groups, showDetails);
+    renderUngrouped(ungroupedC5, c5Groups.ungrouped);
+    renderUngrouped(ungroupedC10, c10Groups.ungrouped);
+    c5GroupedTotalEl.textContent = String(c5Groups.summary.reduce((a, b) => a + b.count, 0));
+    c10GroupedTotalEl.textContent = String(c10Groups.summary.reduce((a, b) => a + b.count, 0));
+
+    // Сохраняем в состояние для PDF и переключателей
+    AppState.lastGroups = { c5Groups, c10Groups };
+
+    resultsEl.classList.remove('hidden');
+    const preloader = document.getElementById('preloader');
+    if (preloader) preloader.classList.add('hidden');
+    setStatus('Готово');
   }
 
   function normalizeText(text) {
@@ -303,6 +340,7 @@
     } finally {
       updateRulesBanner();
       debugLog('RULES_LOADED', { c5: rulesLoaded.c5, c10: rulesLoaded.c10 });
+      updateDevRulesStats();
     }
   }
 
@@ -318,6 +356,7 @@
         rules.C5 = parseRules(txt);
         rulesLoaded.c5 = true;
         updateRulesBanner();
+        updateDevRulesStats();
         debugLog('RULES_C5_UPLOAD', { ok: true });
       } catch (err) {
         debugLog('RULES_C5_UPLOAD', { ok: false, err });
@@ -338,6 +377,7 @@
         rules.C10 = parseRules(txt);
         rulesLoaded.c10 = true;
         updateRulesBanner();
+        updateDevRulesStats();
         debugLog('RULES_C10_UPLOAD', { ok: true });
       } catch (err) {
         debugLog('RULES_C10_UPLOAD', { ok: false, err });
@@ -349,6 +389,67 @@
 
   // Попытка автозагрузки правил при старте
   loadRulesFromFiles();
+
+  // --- DEV статистика по словарям правил ---
+  function updateDevRulesStats() {
+    const params = new URLSearchParams(location.search);
+    const isDev = params.get('mode') === 'dev';
+    if (!isDev) return;
+    const card = document.getElementById('devRulesStats');
+    if (!card) return;
+    card.classList.remove('hidden');
+
+    const c5CountEl = document.getElementById('rulesC5GroupsCount');
+    const c10CountEl = document.getElementById('rulesC10GroupsCount');
+    const c5ListEl = document.getElementById('rulesC5GroupsList');
+    const c10ListEl = document.getElementById('rulesC10GroupsList');
+
+    const safeLen = (arr) => Array.isArray(arr) ? arr.length : 0;
+
+    if (c5CountEl) c5CountEl.textContent = String(safeLen(rules.C5));
+    if (c10CountEl) c10CountEl.textContent = String(safeLen(rules.C10));
+
+    const renderRulesList = (el, groups) => {
+      if (!el) return;
+      el.innerHTML = '';
+      for (const g of groups) {
+        const keywords = Array.isArray(g.values) ? g.values : [];
+        const kwCount = keywords.length;
+
+        const li = document.createElement('li');
+        li.className = 'result-item';
+
+        const details = document.createElement('details');
+        details.open = false;
+
+        const summary = document.createElement('summary');
+        summary.innerHTML = `${escapeHtml(g.title)} <span class="badge count-badge">${kwCount}</span>`;
+        details.appendChild(summary);
+
+        const nested = document.createElement('ol');
+        nested.className = 'nested-list';
+        if (kwCount === 0) {
+          const empty = document.createElement('li');
+          empty.className = 'muted';
+          empty.textContent = '— ключевых слов нет';
+          nested.appendChild(empty);
+        } else {
+          for (const kw of keywords) {
+            const sub = document.createElement('li');
+            sub.textContent = kw;
+            nested.appendChild(sub);
+          }
+        }
+        details.appendChild(nested);
+
+        li.appendChild(details);
+        el.appendChild(li);
+      }
+    };
+
+    renderRulesList(c5ListEl, rules.C5 || []);
+    renderRulesList(c10ListEl, rules.C10 || []);
+  }
 
   function normalizeForMatch(text) {
     // Канонизация для сопоставления: нижний регистр, ё->е, замена не-букв/цифр на пробел, схлопывание пробелов
@@ -498,56 +599,6 @@
     }
   }
 
-  // --- Формирование PDF (ТОП-N) ---
-  // Кеш шрифтов Montserrat (base64)
-  let _pdfFontB64 = null;
-  let _pdfFontB64Bold = null;
-  let _logoCache = null;
-
-  function arrayBufferToBase64(buffer) {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      const slice = bytes.subarray(i, i + chunk);
-      binary += String.fromCharCode.apply(null, slice);
-    }
-    // eslint-disable-next-line no-undef
-    return btoa(binary);
-  }
-
-  // Перенесено в pdf.js
-
-  function blobToDataURL(blob) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  async function loadLogo() {
-    if (_logoCache) return _logoCache;
-    try {
-      const res = await fetch('images/logo.png');
-      if (!res.ok) throw new Error('logo fetch failed');
-      const blob = await res.blob();
-      const dataUrl = await blobToDataURL(blob);
-      const img = new Image();
-      const dims = await new Promise((resolve, reject) => {
-        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-        img.onerror = reject;
-        img.src = dataUrl;
-      });
-      _logoCache = { dataUrl, widthPx: dims.w, heightPx: dims.h };
-      return _logoCache;
-    } catch (e) {
-      debugLog('PDF_LOGO_ERROR', e);
-      return null;
-    }
-  }
-
   function getTopNFromUI() {
     const sel = document.getElementById('topSelect');
     const n = sel ? parseInt(sel.value, 10) : 3;
@@ -612,41 +663,7 @@
       loaderText.textContent = 'Анализ…';
       setStatus('Анализ…');
       const { c5, c10 } = analyze(pageTexts);
-      const c5Total = sumCounts(c5);
-      const c10Total = sumCounts(c10);
-
-      c5CountEl.textContent = String(c5Total);
-      c10CountEl.textContent = String(c10Total);
-      c5CountInlineEl.textContent = String(c5.length);
-      c10CountInlineEl.textContent = String(c10.length);
-      renderList(listC5, c5);
-      renderList(listC10, c10);
-
-      // Группировка по ключевым словам
-      const c5Groups = buildGroupCounters(c5, rules.C5);
-      const c10Groups = buildGroupCounters(c10, rules.C10);
-      const showDetails = document.getElementById('toggleGroupDetails').checked;
-      renderGroups(groupC5List, c5Groups, showDetails);
-      renderGroups(groupC10List, c10Groups, showDetails);
-      renderUngrouped(ungroupedC5, c5Groups.ungrouped);
-      renderUngrouped(ungroupedC10, c10Groups.ungrouped);
-      c5GroupedTotalEl.textContent = String(c5Groups.summary.reduce((a, b) => a + b.count, 0));
-      c10GroupedTotalEl.textContent = String(c10Groups.summary.reduce((a, b) => a + b.count, 0));
-
-      // Сохраняем последний результат для быстрого переключения чекбокса
-      const toggle = document.getElementById('toggleGroupDetails');
-      toggle._last = { c5Groups, c10Groups };
-      // Сохраним в элементы PDF-кнопок
-      const topSel = document.getElementById('topSelect');
-      if (topSel) topSel._last = { c5Groups, c10Groups };
-      const previewBtn = document.getElementById('previewPdfBtn');
-      if (previewBtn) previewBtn._last = { c5Groups, c10Groups };
-      const downloadBtn = document.getElementById('downloadPdfBtn');
-      if (downloadBtn) downloadBtn._last = { c5Groups, c10Groups };
-
-      resultsEl.classList.remove('hidden');
-      preloader.classList.add('hidden');
-      setStatus('Готово');
+      renderAnalysisResults(c5, c10);
     } catch (err) {
       console.error(err);
       const preloader = document.getElementById('preloader');
@@ -664,8 +681,8 @@
   toggle.addEventListener('change', () => {
     // Перерисовать детали групп без повторного парсинга PDF
     // Используем последнюю сохранённую выборку
-    if (!toggle._last) return;
-    const { c5Groups, c10Groups } = toggle._last;
+    if (!AppState.lastGroups) return;
+    const { c5Groups, c10Groups } = AppState.lastGroups;
     renderGroups(groupC5List, c5Groups, toggle.checked);
     renderGroups(groupC10List, c10Groups, toggle.checked);
   });
@@ -829,9 +846,8 @@
   if (previewBtn) {
     previewBtn.addEventListener('click', () => {
       if (!validateForm()) return;
-      const sel = document.getElementById('topSelect');
       const topN = getTopNFromUI();
-      const last = (sel && sel._last) || (previewBtn && previewBtn._last);
+      const last = AppState.lastGroups;
       if (!last) { showToast('Сначала выполните анализ'); return; }
       const store = document.getElementById('storeSelect').value;
       const period = getPeriodLabel();
@@ -845,9 +861,8 @@
   if (downloadBtn) {
     downloadBtn.addEventListener('click', () => {
       if (!validateForm()) return;
-      const sel = document.getElementById('topSelect');
       const topN = getTopNFromUI();
-      const last = (sel && sel._last) || (downloadBtn && downloadBtn._last);
+      const last = AppState.lastGroups;
       if (!last) { showToast('Сначала выполните анализ'); return; }
       const store = document.getElementById('storeSelect').value;
       const period = getPeriodLabel();
@@ -906,37 +921,7 @@
 
       loaderText.textContent = 'Анализ…';
       const { c5, c10 } = analyze(pageTexts);
-      const c5Total = sumCounts(c5);
-      const c10Total = sumCounts(c10);
-
-      c5CountEl.textContent = String(c5Total);
-      c10CountEl.textContent = String(c10Total);
-      c5CountInlineEl.textContent = String(c5.length);
-      c10CountInlineEl.textContent = String(c10.length);
-      renderList(listC5, c5);
-      renderList(listC10, c10);
-
-      const c5Groups = buildGroupCounters(c5, rules.C5);
-      const c10Groups = buildGroupCounters(c10, rules.C10);
-      const showDetails = document.getElementById('toggleGroupDetails').checked;
-      renderGroups(groupC5List, c5Groups, showDetails);
-      renderGroups(groupC10List, c10Groups, showDetails);
-      renderUngrouped(ungroupedC5, c5Groups.ungrouped);
-      renderUngrouped(ungroupedC10, c10Groups.ungrouped);
-      c5GroupedTotalEl.textContent = String(c5Groups.summary.reduce((a, b) => a + b.count, 0));
-      c10GroupedTotalEl.textContent = String(c10Groups.summary.reduce((a, b) => a + b.count, 0));
-
-      const toggle = document.getElementById('toggleGroupDetails');
-      toggle._last = { c5Groups, c10Groups };
-      const topSel = document.getElementById('topSelect');
-      if (topSel) topSel._last = { c5Groups, c10Groups };
-      const previewBtn = document.getElementById('previewPdfBtn');
-      if (previewBtn) previewBtn._last = { c5Groups, c10Groups };
-      const downloadBtn = document.getElementById('downloadPdfBtn');
-      if (downloadBtn) downloadBtn._last = { c5Groups, c10Groups };
-      resultsEl.classList.remove('hidden');
-      document.getElementById('preloader').classList.add('hidden');
-      setStatus('Готово');
+      renderAnalysisResults(c5, c10);
     } catch (err) {
       console.error(err);
       document.getElementById('preloader').classList.add('hidden');

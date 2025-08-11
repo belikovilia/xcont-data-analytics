@@ -3,8 +3,7 @@
   const Pdf = {};
 
   // Кеш шрифтов и логотипа
-  let fontRegB64 = null;
-  let fontBoldB64 = null;
+  const fontCache = { regular: null, bold: null };
   let logoCache = null;
 
   function arrayBufferToBase64(buffer) {
@@ -19,48 +18,46 @@
     return btoa(binary);
   }
 
-  async function ensureMontserrat(doc) {
-    if (fontRegB64) {
+  async function ensureFonts(doc) {
+    const ensureFontVariant = async (variant) => {
+      const fileName = variant === 'bold' ? 'Montserrat-Bold.ttf' : 'Montserrat-Regular.ttf';
+      const style = variant === 'bold' ? 'bold' : 'normal';
+      const cacheKey = variant;
+      if (fontCache[cacheKey]) {
+        try {
+          doc.addFileToVFS(fileName, fontCache[cacheKey]);
+          doc.addFont(fileName, 'Montserrat', style);
+          return true;
+        } catch (_) { /* ignore and refetch */ }
+      }
       try {
-        doc.addFileToVFS('Montserrat-Regular.ttf', fontRegB64);
-        doc.addFont('Montserrat-Regular.ttf', 'Montserrat', 'normal');
+        const res = await fetch(`fonts/${fileName}`);
+        if (!res.ok) throw new Error(`${variant} font fetch failed`);
+        const buf = await res.arrayBuffer();
+        fontCache[cacheKey] = arrayBufferToBase64(buf);
+        doc.addFileToVFS(fileName, fontCache[cacheKey]);
+        doc.addFont(fileName, 'Montserrat', style);
         return true;
-      } catch (_) { /* ignore */ }
-    }
-    try {
-      const res = await fetch('fonts/Montserrat-Regular.ttf');
-      if (!res.ok) throw new Error('font fetch failed');
-      const buf = await res.arrayBuffer();
-      fontRegB64 = arrayBufferToBase64(buf);
-      doc.addFileToVFS('Montserrat-Regular.ttf', fontRegB64);
-      doc.addFont('Montserrat-Regular.ttf', 'Montserrat', 'normal');
-      return true;
-    } catch (e) {
-      console.log('[PDF] Regular font error', e);
-      return false;
-    }
+      } catch (e) {
+        console.log(`[PDF] ${variant} font error`, e);
+        return false;
+      }
+    };
+
+    const [hasRegular, hasBold] = await Promise.all([
+      ensureFontVariant('regular'),
+      ensureFontVariant('bold'),
+    ]);
+    return { hasRegular, hasBold };
   }
 
-  async function ensureMontserratBold(doc) {
-    if (fontBoldB64) {
-      try {
-        doc.addFileToVFS('Montserrat-Bold.ttf', fontBoldB64);
-        doc.addFont('Montserrat-Bold.ttf', 'Montserrat', 'bold');
-        return true;
-      } catch (_) { /* ignore */ }
-    }
-    try {
-      const res = await fetch('fonts/Montserrat-Bold.ttf');
-      if (!res.ok) throw new Error('font bold fetch failed');
-      const buf = await res.arrayBuffer();
-      fontBoldB64 = arrayBufferToBase64(buf);
-      doc.addFileToVFS('Montserrat-Bold.ttf', fontBoldB64);
-      doc.addFont('Montserrat-Bold.ttf', 'Montserrat', 'bold');
-      return true;
-    } catch (e) {
-      console.log('[PDF] Bold font error', e);
-      return false;
-    }
+  function setFontRegular(doc, hasRegular) {
+    if (hasRegular) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
+  }
+
+  function setFontBold(doc, hasBold, hasRegular) {
+    if (hasBold) doc.setFont('Montserrat', 'bold');
+    else if (!hasRegular) doc.setFont('helvetica', 'bold');
   }
 
   function blobToDataURL(blob) {
@@ -135,6 +132,73 @@
     doc.roundedRect(x, y, w, h, 12, 12, 'S');
   }
 
+  function drawLinesWithBoldCounts(doc, lines, x, startY, lineHeight, hasRegular, hasBold) {
+    let y = startY;
+    for (const line of lines) {
+      const m = line.match(/^(.*?)(\s*:\s*)(\d+)\s+(раз|раза)\s*$/u);
+      if (m) {
+        const prefix = m[1] + m[2];
+        const countStr = m[3] + ' ' + m[4];
+        setFontRegular(doc, hasRegular);
+        doc.text(prefix, x, y);
+        const prefixW = doc.getTextWidth(prefix);
+        setFontBold(doc, hasBold, hasRegular);
+        doc.text(countStr, x + prefixW, y);
+        setFontRegular(doc, hasRegular);
+      } else {
+        doc.text(line, x, y);
+      }
+      y += lineHeight;
+    }
+    return y;
+  }
+
+  function renderTopCard(doc, params) {
+    const {
+      left,
+      top,
+      innerWidth,
+      headerText,
+      headerColor,
+      bodyColor,
+      strokeColor,
+      bodyRaw,
+      headerSize = 18,
+      bodySize = 12,
+      headerSpacing = 14,
+      lineHeight = 12,
+      hasRegular,
+      hasBold,
+    } = params;
+
+    const pad = 12;
+    setFontRegular(doc, hasRegular);
+    doc.setFontSize(bodySize);
+    const bodyLines = doc.splitTextToSize(bodyRaw, innerWidth);
+    const contentH = headerSize + headerSpacing + (bodyLines.length * lineHeight);
+    const cardH = pad * 2 + contentH;
+    const cardX = left - pad;
+    const cardY = top;
+    const cardW = innerWidth + pad * 2;
+
+    drawRoundedCard(doc, cardX, cardY, cardW, cardH, strokeColor);
+
+    // Header
+    doc.setFontSize(headerSize);
+    doc.setTextColor(headerColor);
+    setFontBold(doc, hasBold, hasRegular);
+    doc.text(headerText, left, cardY + pad + headerSize);
+
+    // Body
+    setFontRegular(doc, hasRegular);
+    doc.setFontSize(bodySize);
+    doc.setTextColor(bodyColor);
+    const firstLineY = cardY + pad + headerSize + headerSpacing;
+    drawLinesWithBoldCounts(doc, bodyLines, left, firstLineY, lineHeight, hasRegular, hasBold);
+
+    return cardY + cardH;
+  }
+
   Pdf.generateTopReport = async function generateTopReport(topN, c5Groups, c10Groups, mode, meta) {
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF) {
@@ -143,11 +207,9 @@
     }
 
     const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
-    const hasRegular = await ensureMontserrat(doc);
-    const hasBold = await ensureMontserratBold(doc);
+    const { hasRegular, hasBold } = await ensureFonts(doc);
 
     // Логотип в правом нижнем углу
-    let contentTopOffset = 0;
     try {
       const logo = await loadLogo();
       if (logo) {
@@ -169,7 +231,7 @@
     const c10Text = buildTopText(c10Header, c10Groups, topN);
 
     const left = 56;
-    let top = Math.max(72, contentTopOffset);
+    let top = 72;
     const lineGap = 18;
 
     // Центрированный титул и метаданные
@@ -177,7 +239,7 @@
     // Главный заголовок
     doc.setFontSize(34);
     doc.setTextColor('#2b2b2b'); // чёрный графит
-    if (await ensureMontserratBold(doc)) doc.setFont('Montserrat', 'bold'); else doc.setFont('helvetica', 'bold');
+    setFontBold(doc, hasBold, hasRegular);
     doc.text('Отчёт по онлайн-проверкам', pageW / 2, top, { align: 'center' });
     top += 34;
 
@@ -185,12 +247,12 @@
     if (meta && meta.store) {
       doc.setFontSize(30);
       doc.setTextColor('#4f2150');
-      if (await ensureMontserratBold(doc)) doc.setFont('Montserrat', 'bold'); else doc.setFont('helvetica', 'bold');
+      setFontBold(doc, hasBold, hasRegular);
       doc.text(String(meta.store), pageW / 2, top, { align: 'center' });
       top += 28;
     }
     if (meta && meta.period) {
-      if (await ensureMontserrat(doc)) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
+      setFontRegular(doc, hasRegular);
       doc.setFontSize(18);
       doc.setTextColor('#4f2150');
       doc.text(String(meta.period), pageW / 2, top, { align: 'center' });
@@ -198,103 +260,51 @@
     }
     top += 8; // небольшой отступ перед ТОП-блоками
 
-    // Название пиццерии (если задано) уже выше, теперь заголовок C5
-    // C5 карточка "liquid glass"
+    // Общие параметры карточек
     const innerWidth = 483;
-    const cardPad = 12;
     const headerSize = 18;
     const bodySize = 12;
-    const headerSpacing = 14; // дополнительный отступ после ТОП-… заголовков
-    if (hasRegular) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
-    doc.setFontSize(bodySize);
+    const headerSpacing = 14;
+
+    // C5
     const c5BodyRaw = c5Text.split('\n').slice(1).join('\n');
-    const c5Lines = doc.splitTextToSize(c5BodyRaw, innerWidth);
-    const lineHeight = 12; // увеличенная высота строки для С5
-    const c5ContentH = headerSize + headerSpacing + (c5Lines.length * lineHeight);
-    const c5CardH = cardPad * 2 + c5ContentH;
-    const c5CardX = left - cardPad;
-    const c5CardY = top;
-    const c5CardW = innerWidth + cardPad * 2;
-    // Рамка цвета категории (S5 header color)
-    drawRoundedCard(doc, c5CardX, c5CardY, c5CardW, c5CardH, '#FF9933');
+    const c5Bottom = renderTopCard(doc, {
+      left,
+      top,
+      innerWidth,
+      headerText: c5Header,
+      headerColor: '#FF9933',
+      bodyColor: '#a44400',
+      strokeColor: '#FF9933',
+      bodyRaw: c5BodyRaw,
+      headerSize,
+      bodySize,
+      headerSpacing,
+      lineHeight: 12,
+      hasRegular,
+      hasBold,
+    });
 
-    // Header inside card
-    doc.setFontSize(headerSize);
-    doc.setTextColor('#FF9933');
-    if (hasBold) doc.setFont('Montserrat', 'bold'); else if (!hasRegular) doc.setFont('helvetica', 'bold');
-    doc.text(c5Header, left, c5CardY + cardPad + headerSize);
+    top = c5Bottom + 18; // отступ под карточкой
 
-    // Body inside card
-    if (hasRegular) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
-    doc.setFontSize(bodySize);
-    doc.setTextColor('#a44400');
-    // Рисуем строки по одной, делая жирными количество и слово "раз"
-    {
-      let y = c5CardY + cardPad + headerSize + headerSpacing;
-      for (const line of c5Lines) {
-        const m = line.match(/^(.*?)(\s*:\s*)(\d+)\s+(раз|раза)\s*$/u);
-        if (m) {
-          const prefix = m[1] + m[2];
-          const countStr = m[3] + ' ' + m[4];
-          // prefix (regular)
-          if (hasRegular) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
-          doc.text(prefix, left, y);
-          // place bold tail after prefix
-          const prefixW = doc.getTextWidth(prefix);
-          if (hasBold) doc.setFont('Montserrat', 'bold'); else doc.setFont('helvetica', 'bold');
-          doc.text(countStr, left + prefixW, y);
-          // back to regular for next line
-          if (hasRegular) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
-        } else {
-          doc.text(line, left, y);
-        }
-        y += lineHeight;
-      }
-    }
-
-    top = c5CardY + c5CardH + 18; // отступ под карточкой
-
-    // C10 заголовок (жирный)
-    // C10 карточка
-    if (hasRegular) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
-    doc.setFontSize(bodySize);
+    // C10
     const c10BodyRaw = c10Text.split('\n').slice(1).join('\n');
-    const c10Lines = doc.splitTextToSize(c10BodyRaw, innerWidth);
-    const c10LineHeight = 12; // увеличенная высота строки для С10
-    const c10ContentH = headerSize + headerSpacing + (c10Lines.length * c10LineHeight);
-    const c10CardH = cardPad * 2 + c10ContentH;
-    const c10CardX = left - cardPad;
-    const c10CardY = top;
-    const c10CardW = innerWidth + cardPad * 2;
-    drawRoundedCard(doc, c10CardX, c10CardY, c10CardW, c10CardH, '#FF4F4F');
-
-    doc.setFontSize(headerSize);
-    doc.setTextColor('#FF4F4F');
-    if (hasBold) doc.setFont('Montserrat', 'bold'); else if (!hasRegular) doc.setFont('helvetica', 'bold');
-    doc.text(c10Header, left, c10CardY + cardPad + headerSize);
-
-    if (hasRegular) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
-    doc.setFontSize(bodySize);
-    doc.setTextColor('#920000');
-    {
-      let y2 = c10CardY + cardPad + headerSize + headerSpacing;
-      for (const line of c10Lines) {
-        const m = line.match(/^(.*?)(\s*:\s*)(\d+)\s+(раз|раза)\s*$/u);
-        if (m) {
-          const prefix = m[1] + m[2];
-          const countStr = m[3] + ' ' + m[4];
-          if (hasRegular) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
-          doc.text(prefix, left, y2);
-          const prefixW = doc.getTextWidth(prefix);
-          if (hasBold) doc.setFont('Montserrat', 'bold'); else doc.setFont('helvetica', 'bold');
-          doc.text(countStr, left + prefixW, y2);
-          if (hasRegular) doc.setFont('Montserrat', 'normal'); else doc.setFont('helvetica', 'normal');
-        } else {
-          doc.text(line, left, y2);
-        }
-        y2 += c10LineHeight;
-      }
-    }
+    renderTopCard(doc, {
+      left,
+      top,
+      innerWidth,
+      headerText: c10Header,
+      headerColor: '#FF4F4F',
+      bodyColor: '#920000',
+      strokeColor: '#FF4F4F',
+      bodyRaw: c10BodyRaw,
+      headerSize,
+      bodySize,
+      headerSpacing,
+      lineHeight: 12,
+      hasRegular,
+      hasBold,
+    });
 
     if (mode === 'preview') {
       doc.output('dataurlnewwindow');
