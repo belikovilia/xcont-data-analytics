@@ -327,6 +327,9 @@
     return (safe || 'Отчёт') + '.pdf';
   }
 
+  // Экспорт некоторых утилит для повторного использования в app.js
+  Pdf.buildTopText = buildTopText;
+
   window.Pdf = Pdf;
 })();
 

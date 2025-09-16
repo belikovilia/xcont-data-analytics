@@ -95,6 +95,33 @@
     setStatus('Готово');
   }
 
+  // --- Текстовый отчёт ---
+  function buildTextReport(topN, groupsC5, groupsC10, meta) {
+    const build = (caption, grouped) => {
+      if (window.Pdf && typeof window.Pdf.buildTopText === 'function') {
+        return window.Pdf.buildTopText(caption, grouped, topN);
+      }
+      // fallback: простая сборка
+      const items = (grouped.summary || []).slice(0, topN);
+      const lines = [caption];
+      if (items.length === 0) lines.push('—');
+      else {
+        for (const it of items) lines.push(`- ${it.title}: ${it.count} раз`);
+      }
+      return lines.join('\n');
+    };
+
+    const header = ['Отчёт по онлайн-проверкам'];
+    if (meta && meta.store) header.push(String(meta.store));
+    if (meta && meta.period) header.push(String(meta.period));
+    const title = header.join('\n');
+
+    const c5 = build(`ТОП-${topN} С5:`, groupsC5);
+    const c10 = build(`ТОП-${topN} С10:`, groupsC10);
+
+    return [title, '', c5, '', c10].join('\n');
+  }
+
   function normalizeText(text) {
     // NBSP -> space; приведение латиницы к кириллице для похожих букв
     return latinToCyrillic(text.replace(/\u00A0/g, ' '));
@@ -759,7 +786,7 @@
         periodSelect.appendChild(opt);
       }
     } catch (e) {
-      showToast('Не удалось загрузить периоды');
+      showToast('warning', 'Не удалось загрузить периоды');
     }
   })();
 
@@ -779,7 +806,7 @@
         sel.appendChild(opt);
       }
     } catch (e) {
-      showToast('Не удалось загрузить список пиццерий');
+      showToast('warning', 'Не удалось загрузить список пиццерий');
     }
   })();
 
@@ -848,7 +875,7 @@
       if (!validateForm()) return;
       const topN = getTopNFromUI();
       const last = AppState.lastGroups;
-      if (!last) { showToast('Сначала выполните анализ'); return; }
+      if (!last) { showToast('warning', 'Сначала выполните анализ'); return; }
       const store = document.getElementById('storeSelect').value;
       const period = getPeriodLabel();
       if (window.Pdf && typeof window.Pdf.generateTopReport === 'function') {
@@ -863,7 +890,7 @@
       if (!validateForm()) return;
       const topN = getTopNFromUI();
       const last = AppState.lastGroups;
-      if (!last) { showToast('Сначала выполните анализ'); return; }
+      if (!last) { showToast('warning', 'Сначала выполните анализ'); return; }
       const store = document.getElementById('storeSelect').value;
       const period = getPeriodLabel();
       if (window.Pdf && typeof window.Pdf.generateTopReport === 'function') {
@@ -872,9 +899,61 @@
     });
   }
 
-  function showToast(text) {
+  // Кнопка текстового отчёта
+  const textReportBtn = document.getElementById('textReportBtn');
+  if (textReportBtn) {
+    textReportBtn.addEventListener('click', () => {
+      const last = AppState.lastGroups;
+      if (!last) { showToast('warning', 'Сначала выполните анализ'); return; }
+      const topN = getTopNFromUI();
+      const store = document.getElementById('storeSelect').value;
+      const period = getPeriodLabel();
+      const text = buildTextReport(topN, last.c5Groups, last.c10Groups, { store, period });
+      const sec = document.getElementById('textReportSection');
+      const pre = document.getElementById('textReport');
+      if (pre) pre.textContent = text;
+      if (sec) sec.classList.remove('hidden');
+      // прокрутить к блоку
+      if (sec && typeof sec.scrollIntoView === 'function') sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  // Кнопка копирования текстового отчёта
+  const copyTextReportBtn = document.getElementById('copyTextReportBtn');
+  if (copyTextReportBtn) {
+    copyTextReportBtn.addEventListener('click', async () => {
+      const pre = document.getElementById('textReport');
+      const text = pre ? pre.textContent : '';
+      if (!text) { showToast('warning', 'Нет данных для копирования'); return; }
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('success', 'Скопировано');
+      } catch (_) {
+        // Фолбэк через временной textarea
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); showToast('success', 'Скопировано'); } catch (e) { showToast('error', 'Не удалось скопировать'); }
+        document.body.removeChild(ta);
+      }
+    });
+  }
+
+  function showToast(typeOrText, maybeText) {
     const el = document.getElementById('toast');
     if (!el) return;
+    // Аргументы: showToast(text) или showToast(type, text)
+    const type = maybeText ? String(typeOrText) : 'info';
+    const text = maybeText ? String(maybeText) : String(typeOrText);
+
+    el.classList.remove('success', 'warning', 'error', 'info');
+    if (type === 'success' || type === 'warning' || type === 'error' || type === 'info') {
+      el.classList.add(type);
+    } else {
+      el.classList.add('info');
+    }
+
     el.textContent = text;
     el.classList.remove('hidden');
     clearTimeout(showToast._t);
@@ -895,7 +974,7 @@
     if (!storeEl || !storeEl.value) { if (errStore) { errStore.textContent = 'Выберите пиццерию'; errStore.classList.remove('hidden'); } ok = false; } else if (errStore) errStore.classList.add('hidden');
     // Period обязателен
     if (!periodEl || !periodEl.value) { if (errPeriod) { errPeriod.textContent = 'Выберите период'; errPeriod.classList.remove('hidden'); } ok = false; } else if (errPeriod) errPeriod.classList.add('hidden');
-    if (!ok) showToast('Заполните обязательные поля');
+    if (!ok) showToast('warning', 'Заполните обязательные поля');
     return ok;
   }
 
@@ -961,7 +1040,7 @@
       const file = dt && dt.files && dt.files[0];
       if (!file) return;
       if (file.type !== 'application/pdf') {
-        showToast('Пожалуйста, выберите PDF файл');
+        showToast('warning', 'Пожалуйста, выберите PDF файл');
         return;
       }
       handleFile(file);

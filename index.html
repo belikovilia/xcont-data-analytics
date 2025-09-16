@@ -87,6 +87,7 @@
           <div class="btns-row">
             <button id="previewPdfBtn" class="button" type="button"><span class="icon">visibility</span>Предпросмотр</button>
             <button id="downloadPdfBtn" class="button ghost" type="button"><span class="icon">download</span>Скачать</button>
+            <button id="textReportBtn" class="button ghost" type="button"><span class="icon">description</span>Текстовый отчёт</button>
           </div>
         </div>
 
@@ -143,6 +144,15 @@
           <summary>Строки с С10 (<span id="c10CountInline">0</span>)</summary>
           <ol id="listC10" class="result-list"></ol>
         </details>
+
+        <!-- Текстовый отчёт -->
+        <section id="textReportSection" class="card hidden" style="margin-top:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <h3 style="margin:0;">Текстовый отчёт</h3>
+            <button id="copyTextReportBtn" class="button ghost" type="button" title="Копировать"><span class="icon">content_copy</span>Копировать</button>
+          </div>
+          <pre id="textReport" class="text-report" style="margin-top:10px; white-space:pre-wrap; word-break:break-word;"></pre>
+        </section>
 
         <!-- DEV: статистика по файлам правил -->
         <section id="devRulesStats" class="card dev-only hidden" style="margin-top:16px;">
