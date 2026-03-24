@@ -307,7 +307,9 @@
     });
 
     if (mode === 'preview') {
-      doc.output('dataurlnewwindow');
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
     } else {
       const name = buildReportFileName(meta);
       doc.save(name);
