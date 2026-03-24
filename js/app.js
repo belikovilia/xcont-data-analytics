@@ -865,7 +865,13 @@
   const textAreaInput = document.getElementById('textAreaInput');
   analyzeTextBtn.addEventListener('click', () => {
     const text = textAreaInput.value || '';
-    analyzePlainText(text);
+    const origText = analyzeTextBtn.textContent;
+    analyzeTextBtn.disabled = true;
+    analyzeTextBtn.textContent = 'Анализирую…';
+    analyzePlainText(text, () => {
+      analyzeTextBtn.disabled = false;
+      analyzeTextBtn.textContent = origText;
+    });
   });
 
   // Кнопки PDF
@@ -985,27 +991,33 @@
     return opt ? opt.textContent : '';
   }
 
-  function analyzePlainText(text) {
+  function analyzePlainText(text, onDone) {
     resetUI();
     const preloader = document.getElementById('preloader');
     const loaderText = document.getElementById('loaderText');
     preloader.classList.remove('hidden');
     loaderText.textContent = 'Подготовка текста…';
 
-    try {
-      // Разобьём текст на строки. Первая страница в текстовом режиме не нужна —
-      // но у нас нет разметки страниц, поэтому просто анализируем всё.
-      const lines = text.split(/\r?\n/);
-      const pageTexts = [{ page: 2, lines }];
+    // Откладываем тяжёлую работу на следующий кадр,
+    // чтобы браузер успел отрисовать прелоадер до начала вычислений.
+    setTimeout(() => {
+      try {
+        // Разобьём текст на строки. Первая страница в текстовом режиме не нужна —
+        // но у нас нет разметки страниц, поэтому просто анализируем всё.
+        const lines = text.split(/\r?\n/);
+        const pageTexts = [{ page: 2, lines }];
 
-      loaderText.textContent = 'Анализ…';
-      const { c5, c10 } = analyze(pageTexts);
-      renderAnalysisResults(c5, c10);
-    } catch (err) {
-      console.error(err);
-      document.getElementById('preloader').classList.add('hidden');
-      setStatus('Ошибка при анализе текста');
-    }
+        loaderText.textContent = 'Анализ…';
+        const { c5, c10 } = analyze(pageTexts);
+        renderAnalysisResults(c5, c10);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('preloader').classList.add('hidden');
+        setStatus('Ошибка при анализе текста');
+      } finally {
+        if (typeof onDone === 'function') onDone();
+      }
+    }, 0);
   }
 
   // Drag and Drop функциональность
