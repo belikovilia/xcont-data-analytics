@@ -14,7 +14,6 @@
       const slice = bytes.subarray(i, i + chunk);
       binary += String.fromCharCode.apply(null, slice);
     }
-    // eslint-disable-next-line no-undef
     return btoa(binary);
   }
 
@@ -28,7 +27,7 @@
           doc.addFileToVFS(fileName, fontCache[cacheKey]);
           doc.addFont(fileName, 'Montserrat', style);
           return true;
-        } catch (_) { /* ignore and refetch */ }
+        } catch (_) { /* refetch */ }
       }
       try {
         const res = await fetch(`fonts/${fileName}`);
@@ -112,7 +111,7 @@
     } else {
       for (const it of items) {
         lines.push(`- ${it.title}: ${it.count} ${ruTimesWord(it.count)}`);
-        lines.push(''); // отступ между пунктами
+        lines.push('');
       }
       if (lines[lines.length - 1] === '') lines.pop();
     }
@@ -155,23 +154,13 @@
 
   function renderTopCard(doc, params) {
     const {
-      left,
-      top,
-      innerWidth,
-      headerText,
-      headerColor,
-      bodyColor,
-      strokeColor,
-      bodyRaw,
-      headerSize = 18,
-      bodySize = 12,
-      headerSpacing = 14,
-      lineHeight = 12,
-      hasRegular,
-      hasBold,
+      left, top, innerWidth,
+      headerText, headerColor, bodyColor, strokeColor, bodyRaw,
+      headerSize = 16, bodySize = 11, headerSpacing = 12, lineHeight = 11,
+      hasRegular, hasBold,
     } = params;
 
-    const pad = 12;
+    const pad = 10;
     setFontRegular(doc, hasRegular);
     doc.setFontSize(bodySize);
     const bodyLines = doc.splitTextToSize(bodyRaw, innerWidth);
@@ -183,13 +172,13 @@
 
     drawRoundedCard(doc, cardX, cardY, cardW, cardH, strokeColor);
 
-    // Header
+    // Заголовок
     doc.setFontSize(headerSize);
     doc.setTextColor(headerColor);
     setFontBold(doc, hasBold, hasRegular);
     doc.text(headerText, left, cardY + pad + headerSize);
 
-    // Body
+    // Тело
     setFontRegular(doc, hasRegular);
     doc.setFontSize(bodySize);
     doc.setTextColor(bodyColor);
@@ -199,140 +188,140 @@
     return cardY + cardH;
   }
 
-  Pdf.generateTopReport = async function generateTopReport(topN, c5Groups, c10Groups, mode, meta) {
+  /* ──────────────────────────────────────────────────────────────
+     Генерация мультистраничного PDF (batch)
+     Ориентация: альбомная
+     ────────────────────────────────────────────────────────────── */
+  Pdf.generateBatchReport = async function generateBatchReport(topN, results, mode, meta) {
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF) {
       alert('jsPDF не загружен');
       return;
     }
 
-    const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+    // Альбомная ориентация
+    const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
     const { hasRegular, hasBold } = await ensureFonts(doc);
 
-    // Логотип в правом нижнем углу
-    try {
-      const logo = await loadLogo();
-      if (logo) {
-        const pageW = doc.internal.pageSize.getWidth();
-        const pageH = doc.internal.pageSize.getHeight();
-        const targetW = 66; // уменьшили ~в 2 раза
-        const ratio = logo.heightPx && logo.widthPx ? (logo.heightPx / logo.widthPx) : 0.3;
-        const targetH = targetW * ratio;
-        const x = pageW - targetW; // без правого поля
-        const y = pageH - targetH; // правый нижний угол
-        doc.addImage(logo.dataUrl, 'PNG', x, y, targetW, targetH, undefined, 'FAST');
-      }
-    } catch (_) { /* ignore */ }
+    let logo = null;
+    try { logo = await loadLogo(); } catch (_) { /* ignore */ }
 
-    // Заголовки и тело
-    const c5Header = `ТОП-${topN} С5:`;
-    const c10Header = `ТОП-${topN} С10:`;
-    const c5Text = buildTopText(c5Header, c5Groups, topN);
-    const c10Text = buildTopText(c10Header, c10Groups, topN);
-
-    const left = 56;
-    let top = 72;
-    const lineGap = 18;
-
-    // Центрированный титул и метаданные
-    const pageW = doc.internal.pageSize.getWidth();
-    // Главный заголовок
-    doc.setFontSize(34);
-    doc.setTextColor('#2b2b2b'); // чёрный графит
-    setFontBold(doc, hasBold, hasRegular);
-    doc.text('Отчёт по онлайн-проверкам', pageW / 2, top, { align: 'center' });
-    top += 34;
-
-    // Метаданные по центру: пиццерия и период
-    if (meta && meta.store) {
-      doc.setFontSize(30);
-      doc.setTextColor('#4f2150');
-      setFontBold(doc, hasBold, hasRegular);
-      doc.text(String(meta.store), pageW / 2, top, { align: 'center' });
-      top += 28;
+    for (let i = 0; i < results.length; i++) {
+      if (i > 0) doc.addPage();
+      renderPizzeriaPage(doc, results[i], topN, meta, logo, hasRegular, hasBold);
     }
-    if (meta && meta.period) {
-      setFontRegular(doc, hasRegular);
-      doc.setFontSize(18);
-      doc.setTextColor('#4f2150');
-      doc.text(String(meta.period), pageW / 2, top, { align: 'center' });
-      top += 26;
-    }
-    top += 8; // небольшой отступ перед ТОП-блоками
-
-    // Общие параметры карточек
-    const innerWidth = 483;
-    const headerSize = 18;
-    const bodySize = 12;
-    const headerSpacing = 14;
-
-    // C5
-    const c5BodyRaw = c5Text.split('\n').slice(1).join('\n');
-    const c5Bottom = renderTopCard(doc, {
-      left,
-      top,
-      innerWidth,
-      headerText: c5Header,
-      headerColor: '#FF9933',
-      bodyColor: '#a44400',
-      strokeColor: '#FF9933',
-      bodyRaw: c5BodyRaw,
-      headerSize,
-      bodySize,
-      headerSpacing,
-      lineHeight: 12,
-      hasRegular,
-      hasBold,
-    });
-
-    top = c5Bottom + 18; // отступ под карточкой
-
-    // C10
-    const c10BodyRaw = c10Text.split('\n').slice(1).join('\n');
-    renderTopCard(doc, {
-      left,
-      top,
-      innerWidth,
-      headerText: c10Header,
-      headerColor: '#FF4F4F',
-      bodyColor: '#920000',
-      strokeColor: '#FF4F4F',
-      bodyRaw: c10BodyRaw,
-      headerSize,
-      bodySize,
-      headerSpacing,
-      lineHeight: 12,
-      hasRegular,
-      hasBold,
-    });
 
     if (mode === 'preview') {
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
     } else {
-      const name = buildReportFileName(meta);
+      const name = buildReportFileName(results, meta);
       doc.save(name);
     }
   };
 
-  function buildReportFileName(meta) {
-    const store = meta && meta.store ? String(meta.store).trim() : '';
+  /**
+   * Рендерит одну страницу (одну пиццерию) в PDF-документе.
+   */
+  function renderPizzeriaPage(doc, result, topN, meta, logo, hasRegular, hasBold) {
+    const pageW = doc.internal.pageSize.getWidth();  // 842
+    const pageH = doc.internal.pageSize.getHeight();  // 595
+
+    // Логотип в правом нижнем углу
+    if (logo) {
+      try {
+        const targetW = 60;
+        const ratio = logo.heightPx && logo.widthPx ? (logo.heightPx / logo.widthPx) : 0.3;
+        const targetH = targetW * ratio;
+        doc.addImage(logo.dataUrl, 'PNG', pageW - targetW - 10, pageH - targetH - 10, targetW, targetH, undefined, 'FAST');
+      } catch (_) { /* ignore */ }
+    }
+
+    const left = 48;
+    let top = 44;
+    const innerWidth = pageW - left * 2;
+
+    // Главный заголовок
+    doc.setFontSize(24);
+    doc.setTextColor('#2b2b2b');
+    setFontBold(doc, hasBold, hasRegular);
+    doc.text('Отчёт по онлайн-проверкам', pageW / 2, top, { align: 'center' });
+    top += 28;
+
+    // Название пиццерии
+    doc.setFontSize(20);
+    doc.setTextColor('#4f2150');
+    setFontBold(doc, hasBold, hasRegular);
+    doc.text(result.name, pageW / 2, top, { align: 'center' });
+    top += 22;
+
+    // Период
+    if (meta && meta.period) {
+      setFontRegular(doc, hasRegular);
+      doc.setFontSize(14);
+      doc.setTextColor('#4f2150');
+      doc.text(String(meta.period), pageW / 2, top, { align: 'center' });
+      top += 20;
+    }
+
+    top += 6;
+
+    // Карточка С10
+    const c10Header = `ТОП-${topN} С10:`;
+    const c10BodyRaw = buildTopText(c10Header, result.c10Groups, topN).split('\n').slice(1).join('\n');
+    const c10Bottom = renderTopCard(doc, {
+      left, top, innerWidth,
+      headerText: c10Header,
+      headerColor: '#FF4F4F', bodyColor: '#920000', strokeColor: '#FF4F4F',
+      bodyRaw: c10BodyRaw,
+      headerSize: 15, bodySize: 10, headerSpacing: 10, lineHeight: 10,
+      hasRegular, hasBold,
+    });
+    top = c10Bottom + 10;
+
+    // Карточка С5
+    const c5Header = `ТОП-${topN} С5:`;
+    const c5BodyRaw = buildTopText(c5Header, result.c5Groups, topN).split('\n').slice(1).join('\n');
+    const c5Bottom = renderTopCard(doc, {
+      left, top, innerWidth,
+      headerText: c5Header,
+      headerColor: '#FF9933', bodyColor: '#a44400', strokeColor: '#FF9933',
+      bodyRaw: c5BodyRaw,
+      headerSize: 15, bodySize: 10, headerSpacing: 10, lineHeight: 10,
+      hasRegular, hasBold,
+    });
+    top = c5Bottom + 10;
+
+    // Карточка С3 (если есть нарушения)
+    const c3Items = (result.c3Groups.summary || []);
+    if (c3Items.length > 0) {
+      const c3Header = 'С3:';
+      const c3BodyRaw = buildTopText(c3Header, result.c3Groups, topN).split('\n').slice(1).join('\n');
+      renderTopCard(doc, {
+        left, top, innerWidth,
+        headerText: c3Header,
+        headerColor: '#66BB6A', bodyColor: '#2e7d32', strokeColor: '#66BB6A',
+        bodyRaw: c3BodyRaw,
+        headerSize: 15, bodySize: 10, headerSpacing: 10, lineHeight: 10,
+        hasRegular, hasBold,
+      });
+    }
+  }
+
+  function buildReportFileName(results, meta) {
     const period = meta && meta.period ? String(meta.period).trim() : '';
     const parts = [];
-    if (store) parts.push(store);
+    if (results.length === 1) parts.push(results[0].name);
     if (period) parts.push(period);
     parts.push('Отчёт');
     const raw = parts.join('_');
-    // Допустим кириллицу/латиницу/цифры/пробел/подчёркивание/тире/точку/скобки
     const safe = raw.replace(/[^\p{L}\p{N}\s_\-().]+/gu, '').replace(/\s+/g, ' ').trim();
     return (safe || 'Отчёт') + '.pdf';
   }
 
-  // Экспорт некоторых утилит для повторного использования в app.js
+  // Экспорт утилит для app.js
   Pdf.buildTopText = buildTopText;
 
   window.Pdf = Pdf;
 })();
-
-
