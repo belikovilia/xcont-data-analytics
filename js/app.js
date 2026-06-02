@@ -1,38 +1,28 @@
 (function () {
-  const input = document.getElementById('pdfInput');
-  const statusEl = document.getElementById('status');
-  const resultsEl = document.getElementById('results');
-  const pagesCountEl = document.getElementById('pagesCount');
-  const c5CountEl = document.getElementById('c5Count');
-  const c10CountEl = document.getElementById('c10Count');
-  const c5CountInlineEl = document.getElementById('c5CountInline');
-  const c10CountInlineEl = document.getElementById('c10CountInline');
-  const listC5 = document.getElementById('listC5');
-  const listC10 = document.getElementById('listC10');
-  const groupC5List = document.getElementById('groupC5List');
-  const groupC10List = document.getElementById('groupC10List');
-  const c5GroupedTotalEl = document.getElementById('c5GroupedTotal');
-  const c10GroupedTotalEl = document.getElementById('c10GroupedTotal');
-  const ungroupedC5 = document.getElementById('ungroupedC5');
-  const ungroupedC10 = document.getElementById('ungroupedC10');
+  /* ──────────────────────────────────────────────────────────────
+     DOM-элементы
+     ────────────────────────────────────────────────────────────── */
+  const statusEl           = document.getElementById('status');
+  const resultsEl          = document.getElementById('results');
+  const pizzeriaCountEl    = document.getElementById('pizzeriaCount');
+  const totalC5El          = document.getElementById('totalC5');
+  const totalC10El         = document.getElementById('totalC10');
+  const totalC3El          = document.getElementById('totalC3');
+  const pizzeriaResultsEl  = document.getElementById('pizzeriaResults');
+  const analyzeTextBtn     = document.getElementById('analyzeTextBtn');
+  const textAreaInput      = document.getElementById('textAreaInput');
 
-  // Единое состояние приложения
+  /* ──────────────────────────────────────────────────────────────
+     Состояние приложения
+     ────────────────────────────────────────────────────────────── */
   const AppState = {
-    lastGroups: null, // { c5Groups, c10Groups }
+    lastResults: null, // массив { name, c3, c5, c10, c3Groups, c5Groups, c10Groups }
   };
 
-  // Отключаем воркер, чтобы можно было открыть файл просто двойным кликом по index.html
-  if (window['pdfjsLib']) {
-    try {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-    } catch (_) {
-      // ignore
-    }
-  }
-
-  function setStatus(text) {
-    statusEl.textContent = text || '';
-  }
+  /* ──────────────────────────────────────────────────────────────
+     Утилиты
+     ────────────────────────────────────────────────────────────── */
+  function setStatus(text) { statusEl.textContent = text || ''; }
 
   function isDebug() {
     const el = document.getElementById('toggleDebug');
@@ -40,282 +30,181 @@
   }
 
   function debugLog(...args) {
-    if (isDebug()) {
-      // eslint-disable-next-line no-console
-      console.log('[PDF-DEBUG]', ...args);
-    }
+    if (isDebug()) console.log('[DEBUG]', ...args);
   }
 
-  function resetUI() {
-    pagesCountEl.textContent = '–';
-    c5CountEl.textContent = '0';
-    c10CountEl.textContent = '0';
-    c5CountInlineEl.textContent = '0';
-    c10CountInlineEl.textContent = '0';
-    listC5.innerHTML = '';
-    listC10.innerHTML = '';
-    groupC5List.innerHTML = '';
-    groupC10List.innerHTML = '';
-    c5GroupedTotalEl.textContent = '0';
-    c10GroupedTotalEl.textContent = '0';
-    ungroupedC5.innerHTML = '';
-    ungroupedC10.innerHTML = '';
-    resultsEl.classList.add('hidden');
-  }
-
-  function renderAnalysisResults(c5, c10) {
-    const c5Total = sumCounts(c5);
-    const c10Total = sumCounts(c10);
-
-    c5CountEl.textContent = String(c5Total);
-    c10CountEl.textContent = String(c10Total);
-    c5CountInlineEl.textContent = String(c5.length);
-    c10CountInlineEl.textContent = String(c10.length);
-    renderList(listC5, c5);
-    renderList(listC10, c10);
-
-    // Группировка по ключевым словам
-    const c5Groups = buildGroupCounters(c5, rules.C5);
-    const c10Groups = buildGroupCounters(c10, rules.C10);
-    const showDetailsEl = document.getElementById('toggleGroupDetails');
-    const showDetails = !!(showDetailsEl && showDetailsEl.checked);
-    renderGroups(groupC5List, c5Groups, showDetails);
-    renderGroups(groupC10List, c10Groups, showDetails);
-    renderUngrouped(ungroupedC5, c5Groups.ungrouped);
-    renderUngrouped(ungroupedC10, c10Groups.ungrouped);
-    c5GroupedTotalEl.textContent = String(c5Groups.summary.reduce((a, b) => a + b.count, 0));
-    c10GroupedTotalEl.textContent = String(c10Groups.summary.reduce((a, b) => a + b.count, 0));
-
-    // Сохраняем в состояние для PDF и переключателей
-    AppState.lastGroups = { c5Groups, c10Groups };
-
-    resultsEl.classList.remove('hidden');
-    const preloader = document.getElementById('preloader');
-    if (preloader) preloader.classList.add('hidden');
-    setStatus('Готово');
-  }
-
-  // --- Текстовый отчёт ---
-  function buildTextReport(topN, groupsC5, groupsC10, meta) {
-    const build = (caption, grouped) => {
-      if (window.Pdf && typeof window.Pdf.buildTopText === 'function') {
-        return window.Pdf.buildTopText(caption, grouped, topN);
-      }
-      // fallback: простая сборка
-      const items = (grouped.summary || []).slice(0, topN);
-      const lines = [caption];
-      if (items.length === 0) lines.push('—');
-      else {
-        for (const it of items) lines.push(`- ${it.title}: ${it.count} раз`);
-      }
-      return lines.join('\n');
-    };
-
-    const header = ['Отчёт по онлайн-проверкам'];
-    if (meta && meta.store) header.push(String(meta.store));
-    if (meta && meta.period) header.push(String(meta.period));
-    const title = header.join('\n');
-
-    const c5 = build(`ТОП-${topN} С5:`, groupsC5);
-    const c10 = build(`ТОП-${topN} С10:`, groupsC10);
-
-    return [title, '', c5, '', c10].join('\n');
-  }
-
-  function normalizeText(text) {
-    // NBSP -> space; приведение латиницы к кириллице для похожих букв
-    return latinToCyrillic(text.replace(/\u00A0/g, ' '));
-  }
-
-  function latinToCyrillic(input) {
-    // Преобразуем похожие латинские символы в кириллицу, чтобы ключи совпадали
-    const map = {
-      A: 'А', a: 'а',
-      B: 'В', b: 'в',
-      C: 'С', c: 'с',
-      E: 'Е', e: 'е',
-      H: 'Н', h: 'н',
-      K: 'К', k: 'к',
-      M: 'М', m: 'м',
-      O: 'О', o: 'о',
-      P: 'Р', p: 'р',
-      T: 'Т', t: 'т',
-      X: 'Х', x: 'х',
-      Y: 'У', y: 'у',
-    };
-    let out = '';
-    for (const ch of input) {
-      out += map[ch] || ch;
-    }
-    return out;
-  }
-
-  function extractSegmentsFromLines(lines, key) {
-    // Поддерживаем перенос описания на следующую строку, если после токена пусто
-    const keyVariant = key.replace('С', '[Сс]');
-    const tokenRe = new RegExp(`(?:^|\\s)(${keyVariant})(?:\\s*(?:[xX×*хХ]\\s*(\\d+)))?`, 'gu');
-    const segments = [];
-    let pending = [];
-    for (const rawLine of lines) {
-      // Пропустить сводные строки
-      const bracketRefs = rawLine.match(/\[\s*\d+\s*\]/g);
-      if (bracketRefs && bracketRefs.length >= 3) continue;
-      const cleanedLine = rawLine.replace(/\[\s*\d+\s*\]/g, '');
-      const line = normalizeText(cleanedLine);
-      if (isDebug() && /\b[Сс]10?\b/.test(line)) {
-        debugLog('LINE', key, line);
-      }
-
-      tokenRe.lastIndex = 0;
-      const matches = [];
-      let m;
-      while ((m = tokenRe.exec(line)) !== null) {
-        const start = m.index;
-        const end = start + m[0].length;
-        const multi = m[2] ? Math.max(1, parseInt(m[2], 10)) : 1;
-        matches.push({ start, end, multi });
-        debugLog('TOK', key, { at: start, len: end - start, multi });
-      }
-
-      if (matches.length === 0) {
-        const desc = line.trim();
-        if (pending.length > 0 && desc.length > 0) {
-          for (const pend of pending) {
-            const text = `${key}${pend.multi > 1 ? `*${pend.multi}` : ''} ${desc}`.trim();
-            segments.push({ text, matchText: desc, count: pend.multi });
-            debugLog('SEG_MERGE_NEXT', key, { seg: desc, multi: pend.multi });
-          }
-          pending = [];
-        }
-        continue;
-      }
-
-      if (pending.length > 0) {
-        const pre = line.slice(0, matches[0].start).trim();
-        if (pre.length > 0) {
-          for (const pend of pending) {
-            const text = `${key}${pend.multi > 1 ? `*${pend.multi}` : ''} ${pre}`.trim();
-            segments.push({ text, matchText: pre, count: pend.multi });
-            debugLog('SEG_PREV_FLUSH', key, { seg: pre, multi: pend.multi });
-          }
-          pending = [];
-        }
-      }
-
-      for (let i = 0; i < matches.length; i += 1) {
-        const segStart = matches[i].end;
-        const segEnd = i + 1 < matches.length ? matches[i + 1].start : line.length;
-        let segText = line.slice(segStart, segEnd).trim();
-        let segMul = matches[i].multi;
-        // Учтём множители в любом месте сегмента (включая хвост)
-        const inline = parseInlineMultipliers(segText);
-        if (inline.mul > 1) {
-          segMul *= inline.mul;
-          segText = inline.text;
-          debugLog('INLINE_MUL', key, { mul: inline.mul, after: segMul });
-        }
-        if (segText.length > 0 && /\p{L}|\p{N}/u.test(segText)) {
-          const text = `${key}${segMul > 1 ? `*${segMul}` : ''} ${segText}`.trim();
-          segments.push({ text, matchText: segText, count: segMul });
-          debugLog('SEG', key, { seg: segText, multi: segMul });
-        } else {
-          pending.push({ multi: segMul });
-          debugLog('PENDING', key, { multi: segMul });
-        }
-      }
-    }
-    if (pending.length > 0) {
-      debugLog('PENDING_LEFT', key, pending.map((p) => p.multi));
-    }
-    return segments;
-  }
-
-  function parseInlineMultipliers(text) {
-    // Возвращает очищенный текст и произведение всех найденных множителей в сегменте
-    // Поддерживаем символы множителя: *, x, X, х, Х, ×, допускаем отсутствие пробела
-    let mul = 1;
-    const token = /([xX×*хХ])\s*(\d+)/gu;
-    let m;
-    while ((m = token.exec(text)) !== null) {
-      const value = parseInt(m[2], 10);
-      if (!Number.isNaN(value) && value > 1) mul *= value;
-    }
-    if (mul > 1) {
-      // Удаляем все встреченные множители из текста
-      text = text.replace(/\s*[xX×*хХ]\s*\d+\s*(?=[\s).,;:-]|$)/gu, ' ').replace(/\s+/g, ' ').trim();
-    }
-    return { text, mul };
-  }
-
-  function renderList(listEl, items) {
-    listEl.innerHTML = '';
-    for (const { text, count, page } of items) {
-      const li = document.createElement('li');
-      li.className = 'result-item';
-      const countBadge = count > 1 ? `<span class="badge count-badge">×${count}</span>` : '';
-      const pageBadge = page ? `<span class="badge page-badge">стр. ${page}</span>` : '';
-      li.innerHTML = `${escapeHtml(text)} ${countBadge} ${pageBadge}`;
-      listEl.appendChild(li);
-    }
+  function escapeHtml(str) {
+    return str.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   }
 
   function sumCounts(items) {
     return items.reduce((acc, it) => acc + (typeof it.count === 'number' ? it.count : 0), 0);
   }
 
-  function escapeHtml(str) {
-    return str
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;');
+  function pluralize(n, one, few, many) {
+    const abs = Math.abs(n);
+    const mod10 = abs % 10;
+    const mod100 = abs % 100;
+    if (mod10 === 1 && mod100 !== 11) return one;
+    if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return few;
+    return many;
   }
 
-  async function readPdfFile(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true }).promise;
-    const pages = pdf.numPages;
-    pagesCountEl.textContent = String(pages);
+  function ruTimesWord(n) {
+    const abs = Math.abs(n);
+    const mod10 = abs % 10;
+    const mod100 = abs % 100;
+    if (mod10 === 1 && mod100 !== 11) return 'раз';
+    if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return 'раза';
+    return 'раз';
+  }
 
-    const pageTexts = [];
+  /* ──────────────────────────────────────────────────────────────
+     Нормализация текста
+     ────────────────────────────────────────────────────────────── */
+  function normalizeText(text) {
+    return latinToCyrillic(text.replace(/\u00A0/g, ' '));
+  }
 
-    for (let p = 1; p <= pages; p += 1) {
-      setStatus(`Извлечение текста: страница ${p}/${pages}…`);
-      const page = await pdf.getPage(p);
-      const content = await page.getTextContent();
-      const strings = content.items.map((it) => (typeof it.str === 'string' ? it.str : ''));
-      // Берём исходные фрагменты без склейки и без дедупликации,
-      // чтобы не потерять повторяющиеся токены, являющиеся отдельными событиями
-      if (p === 1) {
-        debugLog('PAGE_SKIP', p, { fragments: strings.length });
-        continue; // игнорируем первую страницу целиком
+  function latinToCyrillic(input) {
+    const map = {
+      A: 'А', a: 'а', B: 'В', b: 'в', C: 'С', c: 'с',
+      E: 'Е', e: 'е', H: 'Н', h: 'н', K: 'К', k: 'к',
+      M: 'М', m: 'м', O: 'О', o: 'о', P: 'Р', p: 'р',
+      T: 'Т', t: 'т', X: 'Х', x: 'х', Y: 'У', y: 'у',
+    };
+    let out = '';
+    for (const ch of input) out += map[ch] || ch;
+    return out;
+  }
+
+  function normalizeForMatch(text) {
+    const lowered = normalizeText(text).toLowerCase().replace(/ё/g, 'е');
+    return lowered.replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function normalizeForRegex(text) {
+    const lowered = normalizeText(text).toLowerCase().replace(/ё/g, 'е');
+    return lowered.replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     Парсинг текста
+     ────────────────────────────────────────────────────────────── */
+
+  /**
+   * Очистка названия пиццерии:
+   * «Балтийск-1 (💖 XFOOD - в VK!)» → «Балтийск-1»
+   */
+  function cleanPizzeriaName(rawName) {
+    // 1. Убрать всё от первой открывающей скобки
+    let name = rawName.replace(/\s*\(.*$/, '');
+    // 2. Убрать эмодзи
+    name = name.replace(/[\u{1F000}-\u{1FFFF}]/gu, '');
+    name = name.replace(/[\u{2600}-\u{27BF}]/gu, '');
+    name = name.replace(/[\u{FE00}-\u{FEFF}]/gu, '');
+    // 3. Убрать проценты в конце строки (85%, 92.5%)
+    name = name.replace(/\s*\d+[.,]?\d*\s*%\s*$/, '');
+    return name.trim();
+  }
+
+  /**
+   * Разбор одной строки нарушения.
+   * Входные форматы: C-10, C10, С-10, С10, c-5, C-3, и т.д.
+   * Возвращает { category, description, count, text, matchText } или null.
+   */
+  function parseViolationLine(line) {
+    let normalized = line.replace(/\u00A0/g, ' ').trim();
+    if (!normalized) return null;
+
+    // Паттерн: [С/C] [опциональное тире] [число] [пробел] [описание] [*кол-во]
+    const match = normalized.match(/^[CcСс]-?(\d+)\s+(.+?)(?:\s*\*(\d+))?\s*$/);
+    if (!match) return null;
+
+    const num = match[1];
+    const category = `С${num}`; // всегда кириллическая С + число
+    const description = match[2].trim();
+    const count = match[3] ? Math.max(1, parseInt(match[3], 10)) : 1;
+
+    return {
+      category,
+      description,
+      count,
+      text: `${category} ${description}`,
+      matchText: description,
+    };
+  }
+
+  /**
+   * Разбивает входной текст на блоки пиццерий.
+   * Блоки разделены пустыми строками.
+   * Первая строка блока — название, остальные — нарушения.
+   */
+  function parseBlocks(text) {
+    const rawBlocks = text.split(/\n\s*\n/);
+    const results = [];
+
+    for (const block of rawBlocks) {
+      const lines = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (lines.length === 0) continue;
+
+      let name, startIdx;
+
+      // Проверяем: первая строка — это название или нарушение?
+      const firstLineAsViolation = parseViolationLine(lines[0]);
+      if (firstLineAsViolation) {
+        name = 'Без названия';
+        startIdx = 0;
+      } else {
+        name = cleanPizzeriaName(lines[0]);
+        startIdx = 1;
       }
-      pageTexts.push({ page: p, lines: strings });
-      debugLog('PAGE', p, { fragments: strings.length });
+
+      if (!name) continue;
+
+      const c3 = [], c5 = [], c10 = [];
+
+      for (let i = startIdx; i < lines.length; i++) {
+        const v = parseViolationLine(lines[i]);
+        if (v) {
+          if (v.category === 'С3') c3.push(v);
+          else if (v.category === 'С5') c5.push(v);
+          else if (v.category === 'С10') c10.push(v);
+          else debugLog('Unknown category', v.category);
+        } else {
+          debugLog('Unparsed line', lines[i]);
+        }
+      }
+
+      // Добавляем только если есть хотя бы одно нарушение
+      if (c3.length + c5.length + c10.length > 0) {
+        results.push({ name, rawName: lines[0], c3, c5, c10 });
+      }
     }
 
-    return pageTexts;
+    return results;
   }
 
-  function analyze(pageTexts) {
-    const c5 = [];
-    const c10 = [];
-    for (const { page, lines } of pageTexts) {
-      const c5Segs = extractSegmentsFromLines(lines, 'С5').map((s) => ({ ...s, page }));
-      const c10Segs = extractSegmentsFromLines(lines, 'С10').map((s) => ({ ...s, page }));
-      c5.push(...c5Segs);
-      c10.push(...c10Segs);
+  /* ──────────────────────────────────────────────────────────────
+     Загрузка правил (словарей категорий)
+     ────────────────────────────────────────────────────────────── */
+  let rules = { C3: [], C5: [], C10: [] };
+  let rulesLoaded = { c3: false, c5: false, c10: false };
+
+  function updateRulesStatus() {
+    const status = document.getElementById('rulesStatus');
+    if (status) {
+      status.textContent = `C10: ${rulesLoaded.c10 ? 'ОК' : '—'}, C5: ${rulesLoaded.c5 ? 'ОК' : '—'}, C3: ${rulesLoaded.c3 ? 'ОК' : '—'}`;
     }
-    debugLog('ANALYZE_SUM', { c5Segments: c5.length, c10Segments: c10.length, c5Sum: sumCounts(c5), c10Sum: sumCounts(c10) });
-    return { c5, c10 };
-  }
-
-  // --- Группировка по категориям на основе внешних файлов правил ---
-  let rules = { C5: [], C10: [] };
-  let rulesLoaded = { c5: false, c10: false };
-  let rulesTextRaw = { c5: '', c10: '' };
-
-  function buildRules() {
-    return { C5: [], C10: [] };
+    const banner = document.getElementById('rulesBanner');
+    if (banner) {
+      // Скрыть баннер если обязательные С5 и С10 загружены
+      if (rulesLoaded.c5 && rulesLoaded.c10) {
+        banner.classList.add('hidden');
+      } else {
+        banner.classList.remove('hidden');
+      }
+    }
   }
 
   function parseRules(text) {
@@ -324,178 +213,109 @@
     for (let i = 0; i < lines.length; i += 1) {
       const title = lines[i].trim();
       if (!title) continue;
-      const values = (lines[i + 1] || '').split(';').map((s) => s.trim()).filter(Boolean);
+      const values = (lines[i + 1] || '').split(';').map(s => s.trim()).filter(Boolean);
       groups.push({ title, values });
       i += 1;
     }
     return groups;
   }
 
-  function updateRulesBanner() {
-    const banner = document.getElementById('rulesBanner');
-    const status = document.getElementById('rulesStatus');
-    const okC5 = !!rulesLoaded.c5;
-    const okC10 = !!rulesLoaded.c10;
-    if (status) status.textContent = `C5: ${okC5 ? 'OK' : '—'}, C10: ${okC10 ? 'OK' : '—'}`;
-    if (banner) {
-      if (okC5 && okC10) banner.classList.add('hidden');
-      else banner.classList.remove('hidden');
-    }
-  }
-
   async function loadRulesFromFiles() {
     try {
-      const [c5Res, c10Res] = await Promise.allSettled([
+      const [c3Res, c5Res, c10Res] = await Promise.allSettled([
+        fetch('data/rules_c3.txt'),
         fetch('data/rules_c5.txt'),
         fetch('data/rules_c10.txt'),
       ]);
 
+      if (c3Res.status === 'fulfilled' && c3Res.value && c3Res.value.ok) {
+        rules.C3 = parseRules(await c3Res.value.text());
+        rulesLoaded.c3 = true;
+      }
       if (c5Res.status === 'fulfilled' && c5Res.value && c5Res.value.ok) {
-        const txt = await c5Res.value.text();
-        rulesTextRaw.c5 = txt;
-        rules.C5 = parseRules(txt);
+        rules.C5 = parseRules(await c5Res.value.text());
         rulesLoaded.c5 = true;
       }
       if (c10Res.status === 'fulfilled' && c10Res.value && c10Res.value.ok) {
-        const txt = await c10Res.value.text();
-        rulesTextRaw.c10 = txt;
-        rules.C10 = parseRules(txt);
+        rules.C10 = parseRules(await c10Res.value.text());
         rulesLoaded.c10 = true;
       }
-    } catch (e) {
-      // ignore, перейдём на ручную загрузку
+    } catch (_) {
+      // ignore
     } finally {
-      updateRulesBanner();
-      debugLog('RULES_LOADED', { c5: rulesLoaded.c5, c10: rulesLoaded.c10 });
-      updateDevRulesStats();
+      debugLog('RULES_LOADED', { c3: rulesLoaded.c3, c5: rulesLoaded.c5, c10: rulesLoaded.c10 });
+      updateRulesStatus();
     }
   }
 
-  // Обработчики ручной загрузки правил через UI
-  const rulesC5Input = document.getElementById('rulesC5File');
-  if (rulesC5Input) {
-    rulesC5Input.addEventListener('change', async (e) => {
-      const file = e.target && e.target.files && e.target.files[0];
-      if (!file) return;
-      try {
-        const txt = await file.text();
-        rulesTextRaw.c5 = txt;
-        rules.C5 = parseRules(txt);
-        rulesLoaded.c5 = true;
-        updateRulesBanner();
-        updateDevRulesStats();
-        debugLog('RULES_C5_UPLOAD', { ok: true });
-      } catch (err) {
-        debugLog('RULES_C5_UPLOAD', { ok: false, err });
-      } finally {
-        e.target.value = '';
-      }
-    });
-  }
-
-  const rulesC10Input = document.getElementById('rulesC10File');
-  if (rulesC10Input) {
-    rulesC10Input.addEventListener('change', async (e) => {
-      const file = e.target && e.target.files && e.target.files[0];
-      if (!file) return;
-      try {
-        const txt = await file.text();
-        rulesTextRaw.c10 = txt;
-        rules.C10 = parseRules(txt);
-        rulesLoaded.c10 = true;
-        updateRulesBanner();
-        updateDevRulesStats();
-        debugLog('RULES_C10_UPLOAD', { ok: true });
-      } catch (err) {
-        debugLog('RULES_C10_UPLOAD', { ok: false, err });
-      } finally {
-        e.target.value = '';
-      }
-    });
-  }
-
-  // Попытка автозагрузки правил при старте
+  // Автозагрузка правил при старте
   loadRulesFromFiles();
 
-  // --- DEV статистика по словарям правил ---
-  function updateDevRulesStats() {
-    const params = new URLSearchParams(location.search);
-    const isDev = params.get('mode') === 'dev';
-    if (!isDev) return;
-    const card = document.getElementById('devRulesStats');
-    if (!card) return;
-    card.classList.remove('hidden');
-
-    const c5CountEl = document.getElementById('rulesC5GroupsCount');
-    const c10CountEl = document.getElementById('rulesC10GroupsCount');
-    const c5ListEl = document.getElementById('rulesC5GroupsList');
-    const c10ListEl = document.getElementById('rulesC10GroupsList');
-
-    const safeLen = (arr) => Array.isArray(arr) ? arr.length : 0;
-
-    if (c5CountEl) c5CountEl.textContent = String(safeLen(rules.C5));
-    if (c10CountEl) c10CountEl.textContent = String(safeLen(rules.C10));
-
-    const renderRulesList = (el, groups) => {
-      if (!el) return;
-      el.innerHTML = '';
-      for (const g of groups) {
-        const keywords = Array.isArray(g.values) ? g.values : [];
-        const kwCount = keywords.length;
-
-        const li = document.createElement('li');
-        li.className = 'result-item';
-
-        const details = document.createElement('details');
-        details.open = false;
-
-        const summary = document.createElement('summary');
-        summary.innerHTML = `${escapeHtml(g.title)} <span class="badge count-badge">${kwCount}</span>`;
-        details.appendChild(summary);
-
-        const nested = document.createElement('ol');
-        nested.className = 'nested-list';
-        if (kwCount === 0) {
-          const empty = document.createElement('li');
-          empty.className = 'muted';
-          empty.textContent = '— ключевых слов нет';
-          nested.appendChild(empty);
-        } else {
-          for (const kw of keywords) {
-            const sub = document.createElement('li');
-            sub.textContent = kw;
-            nested.appendChild(sub);
+  // Ручная загрузка правил
+  function setupRuleUpload(inputId, categoryKey) {
+    const input = document.getElementById(inputId);
+    if (input) {
+      input.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+          try {
+            const text = await file.text();
+            rules[categoryKey] = parseRules(text);
+            rulesLoaded[categoryKey.toLowerCase()] = true;
+            updateRulesStatus();
+            showToast('success', `Правила ${categoryKey} загружены`);
+          } catch (err) {
+            showToast('error', `Ошибка загрузки ${categoryKey}`);
           }
         }
-        details.appendChild(nested);
+        e.target.value = '';
+      });
+    }
+  }
+  setupRuleUpload('rulesC3File', 'C3');
+  setupRuleUpload('rulesC5File', 'C5');
+  setupRuleUpload('rulesC10File', 'C10');
 
-        li.appendChild(details);
-        el.appendChild(li);
+  /* ──────────────────────────────────────────────────────────────
+     Группировка по категориям (fuzzy-matching)
+     ────────────────────────────────────────────────────────────── */
+
+  function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function keywordToRegex(keyword) {
+    const norm = normalizeForRegex(keyword);
+    const tokens = norm.split(' ').filter(Boolean);
+    const allowFiller = '(?:\\s+\\p{L}+){0,3}?';
+    const parts = tokens.map((tok, idx) => {
+      const isLongWord = /^[\p{L}]{4,}$/u.test(tok);
+      const isWord = /^[\p{L}]+$/u.test(tok);
+      let core;
+      if (isLongWord && isWord) {
+        core = `${escapeRegExp(tok)}[\\p{L}]*`;
+      } else {
+        core = escapeRegExp(tok);
       }
-    };
-
-    renderRulesList(c5ListEl, rules.C5 || []);
-    renderRulesList(c10ListEl, rules.C10 || []);
+      if (idx === 0) return core;
+      return `${allowFiller}\\s+${core}`;
+    });
+    const pattern = parts.join('');
+    return new RegExp(`(?:^|\\s)${pattern}(?=\\s|$)`, 'u');
   }
 
-  function normalizeForMatch(text) {
-    // Канонизация для сопоставления: нижний регистр, ё->е, замена не-букв/цифр на пробел, схлопывание пробелов
-    const lowered = normalizeText(text).toLowerCase().replace(/ё/g, 'е');
-    return lowered
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
+  /**
+   * Группирует нарушения по правилам (keywords → категории).
+   * Возвращает { summary: [{title, count}], details: Map, ungrouped: [] }
+   */
   function buildGroupCounters(items, groupSpec) {
     const counters = new Map();
     const byGroupMatchedItems = new Map();
-    const index = items.map((x) => ({
+    const index = items.map(x => ({
       rawText: x.text,
-      text: normalizeForMatch(x.text.replace(/\[\s*\d+\s*\]/g, '')),
-      textRx: normalizeForRegex(x.text.replace(/\[\s*\d+\s*\]/g, '')),
+      text: normalizeForMatch(x.matchText || x.text),
+      textRx: normalizeForRegex(x.matchText || x.text),
       count: x.count,
-      page: x.page,
     }));
 
     for (const { title, values } of groupSpec) {
@@ -511,7 +331,7 @@
           if (rx.test(item.textRx)) {
             sum += item.count;
             accountedItemIdx.add(i);
-            matchedForGroup.push({ text: item.rawText, page: item.page, count: item.count });
+            matchedForGroup.push({ text: item.rawText, count: item.count });
           }
         }
       }
@@ -522,32 +342,23 @@
     }
 
     // Негруппированные строки
-    const groupedIdx = new Set(
-      Array.from(byGroupMatchedItems.values()).flat().map((it) => `${it.page}::${it.text}`)
+    const groupedTexts = new Set(
+      Array.from(byGroupMatchedItems.values()).flat().map(it => it.text)
     );
-    // Сгруппируем "Без категории" одинаковые строки и просуммируем множители
     const rawUngrouped = index
-      .filter((it) => !groupedIdx.has(`${it.page}::${it.rawText}`))
-      .map((it) => ({ text: it.rawText, page: it.page, count: it.count }));
+      .filter(it => !groupedTexts.has(it.rawText))
+      .map(it => ({ text: it.rawText, count: it.count }));
 
-    const groupedMap = new Map();
+    // Объединяем одинаковые
+    const mergedMap = new Map();
     for (const it of rawUngrouped) {
-      const key = `${it.text}`;
-      const prev = groupedMap.get(key);
-      if (prev) {
-        prev.count += it.count;
-        prev.pages.add(it.page);
-      } else {
-        groupedMap.set(key, { text: it.text, count: it.count, pages: new Set([it.page]) });
-      }
+      const prev = mergedMap.get(it.text);
+      if (prev) prev.count += it.count;
+      else mergedMap.set(it.text, { text: it.text, count: it.count });
     }
-    const ungrouped = Array.from(groupedMap.values()).map((x) => ({
-      text: x.text,
-      page: Array.from(x.pages).sort((a, b) => a - b).join(','),
-      count: x.count,
-    }));
+    const ungrouped = Array.from(mergedMap.values());
 
-    // Добавляем как категорию "Прочие нарушения"
+    // Добавляем «Прочие нарушения»
     if (ungrouped.length > 0) {
       const othersCount = ungrouped.reduce((acc, it) => acc + (it.count || 0), 0);
       counters.set('Прочие нарушения', othersCount);
@@ -561,215 +372,294 @@
     return { summary: sorted, details: byGroupMatchedItems, ungrouped };
   }
 
-  function normalizeForRegex(text) {
-    const lowered = normalizeText(text).toLowerCase().replace(/ё/g, 'е');
-    // Оставляем только буквы/цифры и пробелы
-    return lowered.replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
-  }
-
-  function keywordToRegex(keyword) {
-    const norm = normalizeForRegex(keyword);
-    const tokens = norm.split(' ').filter(Boolean);
-    const allowFiller = '(?:\\s+\\p{L}+){0,3}?';
-    const parts = tokens.map((tok, idx) => {
-      const isLongWord = /^[\p{L}]{4,}$/u.test(tok);
-      const isWord = /^[\p{L}]+$/u.test(tok);
-      const isNum = /^[\p{N}]+$/u.test(tok);
-      let core;
-      if (isLongWord && isWord) {
-        core = `${escapeRegExp(tok)}[\\p{L}]*`;
-      } else {
-        core = escapeRegExp(tok);
-      }
-      if (idx === 0) return core;
-      // Между токенами допускаем до 3 произвольных «вставочных» слов
-      return `${allowFiller}\\s+${core}`;
-    });
-    const pattern = parts.join('');
-    return new RegExp(`(?:^|\\s)${pattern}(?=\\s|$)`, 'u');
-  }
-
-  function escapeRegExp(s) {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  function renderGroups(listEl, grouped, showDetails) {
-    const { summary, details } = grouped;
-    listEl.innerHTML = '';
-    for (const { title, count } of summary) {
-      const li = document.createElement('li');
-      li.className = 'result-item';
-      li.innerHTML = `${escapeHtml(title)} <span class="badge count-badge">${count}</span>`;
-      if (showDetails) {
-        const nested = document.createElement('ol');
-        nested.className = 'nested-list';
-        const items = details.get(title) || [];
-        for (const it of items) {
-          const sub = document.createElement('li');
-          sub.innerHTML = `${escapeHtml(it.text)} <span class="badge page-badge">стр. ${it.page}</span>${it.count > 1 ? ` <span class="badge count-badge">×${it.count}</span>` : ''}`;
-          nested.appendChild(sub);
-        }
-        li.appendChild(nested);
-      }
-      listEl.appendChild(li);
-    }
-  }
-
-  function renderUngrouped(listEl, items) {
-    listEl.innerHTML = '';
+  /**
+   * Простой список без группировки (когда нет файла правил).
+   * Объединяет одинаковые описания и суммирует множители.
+   */
+  function buildSimpleList(items) {
+    const merged = new Map();
     for (const it of items) {
-      const li = document.createElement('li');
-      li.className = 'result-item';
-      const pages = it.page ? `стр. ${it.page}` : '';
-      li.innerHTML = `${escapeHtml(it.text)} ${pages ? `<span class="badge page-badge">${pages}</span>` : ''}${it.count > 1 ? ` <span class="badge count-badge">×${it.count}</span>` : ''}`;
-      listEl.appendChild(li);
+      const key = it.matchText || it.description || it.text;
+      const prev = merged.get(key);
+      if (prev) prev.count += it.count;
+      else merged.set(key, { title: key, count: it.count });
     }
+    const summary = Array.from(merged.values()).sort((a, b) => b.count - a.count);
+    return { summary, details: new Map(), ungrouped: [] };
   }
 
+  /* ──────────────────────────────────────────────────────────────
+     Анализ: парсинг → группировка для каждой пиццерии
+     ────────────────────────────────────────────────────────────── */
+  function analyzeBlocks(blocks) {
+    return blocks.map(block => {
+      const c5Groups  = rules.C5.length > 0 ? buildGroupCounters(block.c5, rules.C5)   : buildSimpleList(block.c5);
+      const c10Groups = rules.C10.length > 0 ? buildGroupCounters(block.c10, rules.C10) : buildSimpleList(block.c10);
+      const c3Groups  = rules.C3.length > 0 ? buildGroupCounters(block.c3, rules.C3)    : buildSimpleList(block.c3);
+
+      return {
+        name: block.name,
+        rawName: block.rawName,
+        c3: block.c3,
+        c5: block.c5,
+        c10: block.c10,
+        c3Groups,
+        c5Groups,
+        c10Groups,
+      };
+    });
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     Рендеринг результатов
+     ────────────────────────────────────────────────────────────── */
+
+  function resetUI() {
+    pizzeriaCountEl.textContent = '0';
+    totalC5El.textContent = '0';
+    totalC10El.textContent = '0';
+    totalC3El.textContent = '0';
+    pizzeriaResultsEl.innerHTML = '';
+    resultsEl.classList.add('hidden');
+    const textSec = document.getElementById('textReportSection');
+    if (textSec) textSec.classList.add('hidden');
+  }
+
+  function renderAllResults(results) {
+    resetUI();
+
+    if (results.length === 0) {
+      setStatus('Нарушения не найдены');
+      return;
+    }
+
+    pizzeriaCountEl.textContent = String(results.length);
+
+    let tC5 = 0, tC10 = 0, tC3 = 0;
+
+    for (const r of results) {
+      tC5 += sumCounts(r.c5);
+      tC10 += sumCounts(r.c10);
+      tC3 += sumCounts(r.c3);
+
+      const card = createPizzeriaCard(r);
+      pizzeriaResultsEl.appendChild(card);
+    }
+
+    totalC5El.textContent = String(tC5);
+    totalC10El.textContent = String(tC10);
+    totalC3El.textContent = String(tC3);
+
+    AppState.lastResults = results;
+
+    resultsEl.classList.remove('hidden');
+    const preloader = document.getElementById('preloader');
+    if (preloader) preloader.classList.add('hidden');
+    setStatus(`Готово — обработано ${results.length} ${pluralize(results.length, 'пиццерия', 'пиццерии', 'пиццерий')}`);
+  }
+
+  function createPizzeriaCard(result) {
+    const card = document.createElement('div');
+    card.className = 'pizzeria-card';
+
+    const c5Sum = sumCounts(result.c5);
+    const c10Sum = sumCounts(result.c10);
+    const c3Sum = sumCounts(result.c3);
+    const topN = getTopNFromUI();
+
+    let html = `
+      <div class="pizzeria-card-header">
+        <h3 class="pizzeria-name">${escapeHtml(result.name)}</h3>
+        <div class="pizzeria-badges">
+          ${c10Sum > 0 ? `<span class="badge c10-badge">С10: ${c10Sum}</span>` : ''}
+          ${c5Sum > 0 ? `<span class="badge c5-badge">С5: ${c5Sum}</span>` : ''}
+          ${c3Sum > 0 ? `<span class="badge c3-badge">С3: ${c3Sum}</span>` : ''}
+        </div>
+      </div>`;
+
+    // С10
+    if (result.c10Groups.summary.length > 0) {
+      html += `<details open>
+        <summary>ТОП-${topN} С10 (${c10Sum})</summary>
+        <ol class="result-list">${renderGroupItems(result.c10Groups, topN)}</ol>
+      </details>`;
+    }
+
+    // С5
+    if (result.c5Groups.summary.length > 0) {
+      html += `<details open>
+        <summary>ТОП-${topN} С5 (${c5Sum})</summary>
+        <ol class="result-list">${renderGroupItems(result.c5Groups, topN)}</ol>
+      </details>`;
+    }
+
+    // С3
+    if (result.c3Groups.summary.length > 0) {
+      html += `<details>
+        <summary>С3 (${c3Sum})</summary>
+        <ol class="result-list">${renderGroupItems(result.c3Groups, topN)}</ol>
+      </details>`;
+    }
+
+    card.innerHTML = html;
+    return card;
+  }
+
+  function renderGroupItems(grouped, topN) {
+    const items = grouped.summary.slice(0, topN);
+    return items.map(it =>
+      `<li class="result-item">${escapeHtml(it.title)} <span class="badge count-badge">${it.count}</span></li>`
+    ).join('');
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     Текстовый отчёт (batch)
+     ────────────────────────────────────────────────────────────── */
+  function buildBatchTextReport(topN, results, period) {
+    const sections = [];
+
+    for (const r of results) {
+      const lines = [];
+      lines.push(r.name);
+      if (period) lines.push(period);
+      lines.push('');
+
+      // С10
+      const c10Items = (r.c10Groups.summary || []).slice(0, topN);
+      lines.push(`ТОП-${topN} С10:`);
+      if (c10Items.length === 0) { lines.push('—'); }
+      else { for (const it of c10Items) lines.push(`- ${it.title}: ${it.count} ${ruTimesWord(it.count)}`); }
+      lines.push('');
+
+      // С5
+      const c5Items = (r.c5Groups.summary || []).slice(0, topN);
+      lines.push(`ТОП-${topN} С5:`);
+      if (c5Items.length === 0) { lines.push('—'); }
+      else { for (const it of c5Items) lines.push(`- ${it.title}: ${it.count} ${ruTimesWord(it.count)}`); }
+
+      // С3
+      const c3Items = (r.c3Groups.summary || []).slice(0, topN);
+      if (c3Items.length > 0) {
+        lines.push('');
+        lines.push('С3:');
+        for (const it of c3Items) lines.push(`- ${it.title}: ${it.count} ${ruTimesWord(it.count)}`);
+      }
+
+      sections.push(lines.join('\n'));
+    }
+
+    const header = 'Отчёт по онлайн-проверкам';
+    const divider = '═'.repeat(40);
+    const headerBlock = period ? `${header}\n${period}` : header;
+
+    return [headerBlock, '', divider, '', sections.join(`\n\n${divider}\n\n`)].join('\n');
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     UI-хелперы
+     ────────────────────────────────────────────────────────────── */
   function getTopNFromUI() {
     const sel = document.getElementById('topSelect');
     const n = sel ? parseInt(sel.value, 10) : 3;
     return Number.isFinite(n) && n > 0 ? n : 3;
   }
 
-  // Вспомогательные функции для формирования текстов ТОП перенесены в pdf.js
-
-  // Генерация PDF вынесена в pdf.js (window.Pdf.generateTopReport)
-
-  // Показывает выбранный файл внутри зоны dnd
-  function updateDropZoneSelectedFile(file) {
-    const dropZone = document.getElementById('dropZone');
-    if (!dropZone) return;
-    const content = dropZone.querySelector('.drop-zone-content');
-    if (!content) return;
-
-    let chip = dropZone.querySelector('.file-selected');
-    if (file) {
-      if (!chip) {
-        chip = document.createElement('div');
-        chip.className = 'file-selected';
-        chip.innerHTML = '<span class="name"></span><button class="remove" title="Убрать">✕</button>';
-        content.appendChild(chip);
-      }
-      const nameEl = chip.querySelector('.name');
-      if (nameEl) nameEl.textContent = file.name;
-
-      const pdfInput = document.getElementById('pdfInput');
-      const removeBtn = chip.querySelector('.remove');
-      if (removeBtn) {
-        removeBtn.onclick = (ev) => {
-          ev.stopPropagation();
-          if (pdfInput) pdfInput.value = '';
-          chip.remove();
-          const results = document.getElementById('results');
-          if (results) results.classList.add('hidden');
-        };
-      }
-    } else {
-      if (chip) chip.remove();
-    }
+  function getPeriodLabel() {
+    const el = document.getElementById('periodSelect');
+    if (!el) return '';
+    const opt = el.options[el.selectedIndex];
+    return opt && opt.value ? opt.textContent : '';
   }
 
-  async function handleFile(file) {
+  function validateForm() {
+    let ok = true;
+    const periodEl = document.getElementById('periodSelect');
+    const errPeriod = document.getElementById('errPeriod');
+
+    if (!periodEl || !periodEl.value) {
+      if (errPeriod) { errPeriod.textContent = 'Выберите период'; errPeriod.classList.remove('hidden'); }
+      ok = false;
+    } else if (errPeriod) {
+      errPeriod.classList.add('hidden');
+    }
+
+    if (!AppState.lastResults || AppState.lastResults.length === 0) {
+      showToast('warning', 'Сначала выполните анализ');
+      return false;
+    }
+
+    if (!ok) showToast('warning', 'Заполните обязательные поля');
+    return ok;
+  }
+
+  function showToast(typeOrText, maybeText) {
+    const el = document.getElementById('toast');
+    if (!el) return;
+    const type = maybeText ? String(typeOrText) : 'info';
+    const text = maybeText ? String(maybeText) : String(typeOrText);
+    el.classList.remove('success', 'warning', 'error', 'info');
+    if (['success', 'warning', 'error', 'info'].includes(type)) el.classList.add(type);
+    else el.classList.add('info');
+    el.textContent = text;
+    el.classList.remove('hidden');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => el.classList.add('hidden'), 3000);
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     Запуск анализа
+     ────────────────────────────────────────────────────────────── */
+  function runAnalysis(text, onDone) {
     resetUI();
-    updateDropZoneSelectedFile(file);
-    if (!file) return;
-    try {
-      // показать прелоадер
-      const preloader = document.getElementById('preloader');
-      const loaderText = document.getElementById('loaderText');
-      preloader.classList.remove('hidden');
-      loaderText.textContent = 'Чтение PDF…';
-      if (!window['pdfjsLib']) {
-        setStatus('Ошибка: библиотека PDF.js не загружена');
-        preloader.classList.add('hidden');
-        return;
+    if (!text.trim()) {
+      showToast('warning', 'Введите текст для анализа');
+      if (onDone) onDone();
+      return;
+    }
+
+    const preloader = document.getElementById('preloader');
+    const loaderText = document.getElementById('loaderText');
+    preloader.classList.remove('hidden');
+    loaderText.textContent = 'Анализ…';
+
+    // Откладываем тяжёлую работу на следующий кадр,
+    // чтобы прелоадер успел отрисоваться
+    setTimeout(() => {
+      try {
+        const blocks = parseBlocks(text);
+        debugLog('BLOCKS', blocks.length, blocks.map(b => b.name));
+
+        if (blocks.length === 0) {
+          preloader.classList.add('hidden');
+          showToast('warning', 'Не удалось найти блоки пиццерий в тексте');
+          setStatus('Блоки пиццерий не найдены');
+          return;
+        }
+
+        const results = analyzeBlocks(blocks);
+        renderAllResults(results);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('preloader').classList.add('hidden');
+        setStatus('Ошибка при анализе текста');
+      } finally {
+        if (onDone) onDone();
       }
-      setStatus('Чтение PDF…');
-      const pageTexts = await readPdfFile(file);
-      loaderText.textContent = 'Анализ…';
-      setStatus('Анализ…');
-      const { c5, c10 } = analyze(pageTexts);
-      renderAnalysisResults(c5, c10);
-    } catch (err) {
-      console.error(err);
-      const preloader = document.getElementById('preloader');
-      preloader.classList.add('hidden');
-      setStatus('Ошибка при обработке PDF. Подробности в консоли.');
-    }
+    }, 0);
   }
 
-  input.addEventListener('change', () => {
-    const file = input.files && input.files[0];
-    handleFile(file);
+  /* ──────────────────────────────────────────────────────────────
+     Обработчики событий
+     ────────────────────────────────────────────────────────────── */
+
+  // Кнопка «Анализировать»
+  analyzeTextBtn.addEventListener('click', () => {
+    analyzeTextBtn.disabled = true;
+    runAnalysis(textAreaInput.value || '', () => {
+      analyzeTextBtn.disabled = false;
+    });
   });
 
-  const toggle = document.getElementById('toggleGroupDetails');
-  toggle.addEventListener('change', () => {
-    // Перерисовать детали групп без повторного парсинга PDF
-    // Используем последнюю сохранённую выборку
-    if (!AppState.lastGroups) return;
-    const { c5Groups, c10Groups } = AppState.lastGroups;
-    renderGroups(groupC5List, c5Groups, toggle.checked);
-    renderGroups(groupC10List, c10Groups, toggle.checked);
-  });
-
-  // Переключение режимов ввода
-  const modePdfBtn = document.getElementById('modePdfBtn');
-  const modeTextBtn = document.getElementById('modeTextBtn');
-  const inputPdf = document.getElementById('inputPdf');
-  const inputText = document.getElementById('inputText');
-  function setMode(mode) {
-    if (mode === 'pdf') {
-      modePdfBtn.classList.add('active');
-      modeTextBtn.classList.remove('active');
-      inputPdf.classList.remove('hidden');
-      inputText.classList.add('hidden');
-    } else {
-      modeTextBtn.classList.add('active');
-      modePdfBtn.classList.remove('active');
-      inputText.classList.remove('hidden');
-      inputPdf.classList.add('hidden');
-    }
-  }
-  modePdfBtn.addEventListener('click', () => setMode('pdf'));
-  modeTextBtn.addEventListener('click', () => setMode('text'));
-
-  // Dev mode по query param ?mode=dev
-  (function initDevMode() {
-    const params = new URLSearchParams(location.search);
-    const isDev = params.get('mode') === 'dev';
-    // Элементы дев-режима
-    const labelDetails = document.getElementById('labelToggleGroupDetails');
-    const labelDebug = document.getElementById('labelToggleDebug');
-    const devUngroupedC5 = document.getElementById('devUngroupedC5');
-    const devUngroupedC10 = document.getElementById('devUngroupedC10');
-    const devListC5 = document.getElementById('devListC5');
-    const devListC10 = document.getElementById('devListC10');
-    const results = document.getElementById('results');
-
-    if (isDev) {
-      // Показать весь аналитический блок и переключатели
-      if (labelDetails) labelDetails.classList.remove('hidden');
-      if (labelDebug) labelDebug.classList.remove('hidden');
-      if (results) results.classList.remove('hidden');
-      if (devUngroupedC5) devUngroupedC5.classList.remove('hidden');
-      if (devUngroupedC10) devUngroupedC10.classList.remove('hidden');
-      // Списки строк останутся скрытыми до анализа, но их контейнеры видимы
-      if (devListC5) devListC5.classList.remove('hidden');
-      if (devListC10) devListC10.classList.remove('hidden');
-    } else {
-      // Спрятать отладочные элементы, оставить только ввод/ТОП/PDF
-      if (labelDetails) labelDetails.classList.add('hidden');
-      if (labelDebug) labelDebug.classList.add('hidden');
-      if (devUngroupedC5) devUngroupedC5.classList.add('hidden');
-      if (devUngroupedC10) devUngroupedC10.classList.add('hidden');
-      if (devListC5) devListC5.classList.add('hidden');
-      if (devListC10) devListC10.classList.add('hidden');
-    }
-  })();
-
-  // Заполнение выпадающего списка периодов (месяцы и 5 недель вперёд)
   // Загрузка периодов из periods.txt
   (async function loadPeriods() {
     const periodSelect = document.getElementById('periodSelect');
@@ -778,153 +668,65 @@
       const res = await fetch('data/periods.txt');
       if (!res.ok) throw new Error('periods fetch failed');
       const text = await res.text();
-      const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+      const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
       for (const line of lines) {
         const opt = document.createElement('option');
         opt.value = line;
         opt.textContent = line;
         periodSelect.appendChild(opt);
       }
-    } catch (e) {
+    } catch (_) {
       showToast('warning', 'Не удалось загрузить периоды');
     }
   })();
 
-  // Загрузка списка пиццерий из pizzerias.txt
-  (async function loadPizzerias() {
-    const sel = document.getElementById('storeSelect');
-    if (!sel) return;
-    try {
-      const res = await fetch('data/pizzerias.txt');
-      if (!res.ok) throw new Error('pizzerias fetch failed');
-      const text = await res.text();
-      const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-      for (const line of lines) {
-        const opt = document.createElement('option');
-        opt.value = line;
-        opt.textContent = line;
-        sel.appendChild(opt);
-      }
-    } catch (e) {
-      showToast('warning', 'Не удалось загрузить список пиццерий');
-    }
-  })();
-
-  // Поиск по списку пиццерий
-  (function initPizzeriaSearch() {
-    const search = document.getElementById('storeSearch');
-    const sel = document.getElementById('storeSelect');
-    const results = document.getElementById('storeResults');
-    if (!search || !sel) return;
-    search.addEventListener('input', () => {
-      const q = (search.value || '').trim().toLowerCase();
-      if (!q) {
-        if (results) { results.innerHTML = ''; results.classList.add('hidden'); }
-        return;
-      }
-      const matches = [];
-      for (const opt of sel.options) {
-        if (!opt.value) continue;
-        const txt = opt.textContent || '';
-        if (txt.toLowerCase().includes(q)) matches.push({ value: opt.value, text: txt });
-      }
-      if (results) {
-        results.innerHTML = '';
-        if (matches.length === 0) {
-          const div = document.createElement('div');
-          div.className = 'dropdown-item';
-          div.textContent = 'Ничего не найдено';
-          div.style.opacity = '0.7';
-          results.appendChild(div);
-        } else {
-          for (const m of matches.slice(0, 50)) {
-            const div = document.createElement('div');
-            div.className = 'dropdown-item';
-            div.textContent = m.text;
-            div.addEventListener('click', () => {
-              sel.value = m.value;
-              results.classList.add('hidden');
-              search.value = '';
-            });
-            results.appendChild(div);
-          }
-        }
-        results.classList.remove('hidden');
-      }
-    });
-    // Закрывать подсказки по клику вне
-    document.addEventListener('click', (e) => {
-      if (!results) return;
-      if (e.target === search || e.target === results || results.contains(e.target)) return;
-      results.classList.add('hidden');
-    });
-  })();
-
-  // Анализ текста из textarea
-  const analyzeTextBtn = document.getElementById('analyzeTextBtn');
-  const textAreaInput = document.getElementById('textAreaInput');
-  analyzeTextBtn.addEventListener('click', () => {
-    const text = textAreaInput.value || '';
-    const origText = analyzeTextBtn.textContent;
-    analyzeTextBtn.disabled = true;
-    analyzeTextBtn.textContent = 'Анализирую…';
-    analyzePlainText(text, () => {
-      analyzeTextBtn.disabled = false;
-      analyzeTextBtn.textContent = origText;
-    });
-  });
-
-  // Кнопки PDF
+  // Кнопка «Предпросмотр PDF»
   const previewBtn = document.getElementById('previewPdfBtn');
   if (previewBtn) {
     previewBtn.addEventListener('click', () => {
       if (!validateForm()) return;
       const topN = getTopNFromUI();
-      const last = AppState.lastGroups;
-      if (!last) { showToast('warning', 'Сначала выполните анализ'); return; }
-      const store = document.getElementById('storeSelect').value;
       const period = getPeriodLabel();
-      if (window.Pdf && typeof window.Pdf.generateTopReport === 'function') {
-        window.Pdf.generateTopReport(topN, last.c5Groups, last.c10Groups, 'preview', { store, period });
+      if (window.Pdf && typeof window.Pdf.generateBatchReport === 'function') {
+        window.Pdf.generateBatchReport(topN, AppState.lastResults, 'preview', { period });
       }
     });
   }
 
+  // Кнопка «Скачать PDF»
   const downloadBtn = document.getElementById('downloadPdfBtn');
   if (downloadBtn) {
     downloadBtn.addEventListener('click', () => {
       if (!validateForm()) return;
       const topN = getTopNFromUI();
-      const last = AppState.lastGroups;
-      if (!last) { showToast('warning', 'Сначала выполните анализ'); return; }
-      const store = document.getElementById('storeSelect').value;
       const period = getPeriodLabel();
-      if (window.Pdf && typeof window.Pdf.generateTopReport === 'function') {
-        window.Pdf.generateTopReport(topN, last.c5Groups, last.c10Groups, 'download', { store, period });
+      if (window.Pdf && typeof window.Pdf.generateBatchReport === 'function') {
+        window.Pdf.generateBatchReport(topN, AppState.lastResults, 'download', { period });
       }
     });
   }
 
-  // Кнопка текстового отчёта
+  // Кнопка «Текстовый отчёт»
   const textReportBtn = document.getElementById('textReportBtn');
   if (textReportBtn) {
     textReportBtn.addEventListener('click', () => {
-      const last = AppState.lastGroups;
-      if (!last) { showToast('warning', 'Сначала выполните анализ'); return; }
+      if (!validateForm()) return;
+      if (!AppState.lastResults || AppState.lastResults.length === 0) {
+        showToast('warning', 'Сначала выполните анализ');
+        return;
+      }
       const topN = getTopNFromUI();
-      const store = document.getElementById('storeSelect').value;
       const period = getPeriodLabel();
-      const text = buildTextReport(topN, last.c5Groups, last.c10Groups, { store, period });
+      const text = buildBatchTextReport(topN, AppState.lastResults, period);
       const sec = document.getElementById('textReportSection');
       const pre = document.getElementById('textReport');
       if (pre) pre.textContent = text;
       if (sec) sec.classList.remove('hidden');
-      // прокрутить к блоку
-      if (sec && typeof sec.scrollIntoView === 'function') sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
 
-  // Кнопка копирования текстового отчёта
+  // Кнопка «Копировать» текстовый отчёт
   const copyTextReportBtn = document.getElementById('copyTextReportBtn');
   if (copyTextReportBtn) {
     copyTextReportBtn.addEventListener('click', async () => {
@@ -935,138 +737,74 @@
         await navigator.clipboard.writeText(text);
         showToast('success', 'Скопировано');
       } catch (_) {
-        // Фолбэк через временной textarea
         const ta = document.createElement('textarea');
         ta.value = text;
         document.body.appendChild(ta);
         ta.select();
-        try { document.execCommand('copy'); showToast('success', 'Скопировано'); } catch (e) { showToast('error', 'Не удалось скопировать'); }
+        try { document.execCommand('copy'); showToast('success', 'Скопировано'); }
+        catch (e) { showToast('error', 'Не удалось скопировать'); }
         document.body.removeChild(ta);
       }
     });
   }
 
-  function showToast(typeOrText, maybeText) {
-    const el = document.getElementById('toast');
-    if (!el) return;
-    // Аргументы: showToast(text) или showToast(type, text)
-    const type = maybeText ? String(typeOrText) : 'info';
-    const text = maybeText ? String(maybeText) : String(typeOrText);
-
-    el.classList.remove('success', 'warning', 'error', 'info');
-    if (type === 'success' || type === 'warning' || type === 'error' || type === 'info') {
-      el.classList.add(type);
-    } else {
-      el.classList.add('info');
-    }
-
-    el.textContent = text;
-    el.classList.remove('hidden');
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => el.classList.add('hidden'), 3000);
-  }
-
-  function validateForm() {
-    let ok = true;
-    const topEl = document.getElementById('topSelect');
-    const storeEl = document.getElementById('storeSelect');
-    const periodEl = document.getElementById('periodSelect');
-    const errTop = document.getElementById('errTop');
-    const errStore = document.getElementById('errStore');
-    const errPeriod = document.getElementById('errPeriod');
-    // TOP обязателен (всегда выбран), но оставим проверку на всякий случай
-    if (!topEl || !topEl.value) { if (errTop) { errTop.textContent = 'Выберите ТОП'; errTop.classList.remove('hidden'); } ok = false; } else if (errTop) errTop.classList.add('hidden');
-    // Store обязателен
-    if (!storeEl || !storeEl.value) { if (errStore) { errStore.textContent = 'Выберите пиццерию'; errStore.classList.remove('hidden'); } ok = false; } else if (errStore) errStore.classList.add('hidden');
-    // Period обязателен
-    if (!periodEl || !periodEl.value) { if (errPeriod) { errPeriod.textContent = 'Выберите период'; errPeriod.classList.remove('hidden'); } ok = false; } else if (errPeriod) errPeriod.classList.add('hidden');
-    if (!ok) showToast('warning', 'Заполните обязательные поля');
-    return ok;
-  }
-
-  function getPeriodLabel() {
-    const el = document.getElementById('periodSelect');
-    if (!el) return '';
-    const opt = el.options[el.selectedIndex];
-    return opt ? opt.textContent : '';
-  }
-
-  function analyzePlainText(text, onDone) {
-    resetUI();
-    const preloader = document.getElementById('preloader');
-    const loaderText = document.getElementById('loaderText');
-    preloader.classList.remove('hidden');
-    loaderText.textContent = 'Подготовка текста…';
-
-    // Откладываем тяжёлую работу на следующий кадр,
-    // чтобы браузер успел отрисовать прелоадер до начала вычислений.
-    setTimeout(() => {
-      try {
-        // Разобьём текст на строки. Первая страница в текстовом режиме не нужна —
-        // но у нас нет разметки страниц, поэтому просто анализируем всё.
-        const lines = text.split(/\r?\n/);
-        const pageTexts = [{ page: 2, lines }];
-
-        loaderText.textContent = 'Анализ…';
-        const { c5, c10 } = analyze(pageTexts);
-        renderAnalysisResults(c5, c10);
-      } catch (err) {
-        console.error(err);
-        document.getElementById('preloader').classList.add('hidden');
-        setStatus('Ошибка при анализе текста');
-      } finally {
-        if (typeof onDone === 'function') onDone();
-      }
-    }, 0);
-  }
-
-  // Drag and Drop функциональность
+  // Drag-and-drop .txt файлов на зону ввода
   (function initDragAndDrop() {
     const dropZone = document.getElementById('dropZone');
-    const pdfInput = document.getElementById('pdfInput');
-    if (!dropZone || !pdfInput) return;
+    const txtInput = document.getElementById('txtFileInput');
+    const textarea = document.getElementById('textAreaInput');
+    if (!dropZone || !textarea) return;
 
-    // Предотвращение стандартного поведения браузера
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-      dropZone.addEventListener(eventName, preventDefaults, false);
-      document.body.addEventListener(eventName, preventDefaults, false);
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
+      dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); }, false);
     });
 
-    function preventDefaults(e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    // Визуальная обратная связь при перетаскивании
-    ['dragenter', 'dragover'].forEach(eventName => {
-      dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
+    ['dragenter', 'dragover'].forEach(ev => {
+      dropZone.addEventListener(ev, () => dropZone.classList.add('drag-over'), false);
     });
 
-    ['dragleave', 'drop'].forEach(eventName => {
-      dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
+    ['dragleave', 'drop'].forEach(ev => {
+      dropZone.addEventListener(ev, () => dropZone.classList.remove('drag-over'), false);
     });
 
-    // Обработка сброшенных файлов
-    dropZone.addEventListener('drop', (e) => {
-      const dt = e.dataTransfer;
-      const file = dt && dt.files && dt.files[0];
+    dropZone.addEventListener('drop', async (e) => {
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (!file) return;
-      if (file.type !== 'application/pdf') {
-        showToast('warning', 'Пожалуйста, выберите PDF файл');
-        return;
+      try {
+        const text = await file.text();
+        textarea.value = text;
+        runAnalysis(text);
+      } catch (err) {
+        showToast('error', 'Ошибка чтения файла');
       }
-      handleFile(file);
-    }, false);
-
-    // Клик по зоне для выбора файла
-    dropZone.addEventListener('click', () => pdfInput.click());
-
-    // Обработка выбора файла через input
-    pdfInput.addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (file) handleFile(file);
     });
+
+    // Кнопка «Загрузить .txt»
+    if (txtInput) {
+      txtInput.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          textarea.value = text;
+          runAnalysis(text);
+        } catch (err) {
+          showToast('error', 'Ошибка чтения файла');
+        }
+        e.target.value = '';
+      });
+    }
+  })();
+
+  // Dev-режим по query param ?mode=dev
+  (function initDevMode() {
+    const params = new URLSearchParams(location.search);
+    const isDev = params.get('mode') === 'dev';
+    const labelDetails = document.getElementById('labelToggleGroupDetails');
+    const labelDebug = document.getElementById('labelToggleDebug');
+    if (isDev) {
+      if (labelDetails) labelDetails.classList.remove('hidden');
+      if (labelDebug) labelDebug.classList.remove('hidden');
+    }
   })();
 })();
-
-
