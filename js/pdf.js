@@ -132,9 +132,9 @@
     if (fillHex) {
       const [fr, fg, fb] = hexToRgb(fillHex);
       doc.setFillColor(fr, fg, fb);
-      doc.roundedRect(x, y, w, h, 24, 24, 'FD'); // Заливка и контур, 24px скругление
+      doc.roundedRect(x, y, w, h, 24, 24, 'FD');
     } else {
-      doc.roundedRect(x, y, w, h, 24, 24, 'S'); // Только контур
+      doc.roundedRect(x, y, w, h, 24, 24, 'S');
     }
   }
 
@@ -163,11 +163,11 @@
     const {
       left, top, innerWidth,
       headerText, headerColor, bodyColor, strokeColor, fillColor, bodyRaw,
-      headerSize = 16, bodySize = 11, headerSpacing = 12, lineHeight = 14,
+      headerSize = 16, bodySize = 11, headerSpacing = 22, lineHeight = 14,
       hasRegular, hasBold,
     } = params;
 
-    const pad = 16; // Увеличенный внутренний отступ для воздуха
+    const pad = 16;
     setFontRegular(doc, hasRegular);
     doc.setFontSize(bodySize);
     const bodyLines = doc.splitTextToSize(bodyRaw, innerWidth - pad * 2);
@@ -246,10 +246,9 @@
     // 2. Шапка: Текст слева, Логотип справа
     if (logo) {
       try {
-        const targetW = 140; // Более широкий размер для прямоугольного логотипа
+        const targetW = 140; 
         const ratio = logo.heightPx && logo.widthPx ? (logo.heightPx / logo.widthPx) : 0.3;
         const targetH = targetW * ratio;
-        // Размещаем справа в шапке
         doc.addImage(logo.dataUrl, 'PNG', pageW - targetW - left, top, targetW, targetH, undefined, 'FAST');
       } catch (_) { /* ignore */ }
     }
@@ -280,10 +279,10 @@
       headerText: c10Header,
       headerColor: '#FF4F4F', bodyColor: '#2b2b2b', strokeColor: '#FF4F4F', fillColor: '#FFF2F2',
       bodyRaw: c10BodyRaw,
-      headerSize: 18, bodySize: 11, headerSpacing: 12, lineHeight: 15,
+      headerSize: 18, bodySize: 11, headerSpacing: 22, lineHeight: 14,
       hasRegular, hasBold,
     });
-    top = c10Bottom + 24; // Увеличенный внешний отступ (воздух) между карточками
+    top = c10Bottom + 24; 
 
     // Карточка С5 (Оранжевая)
     const c5Header = 'С5';
@@ -293,12 +292,12 @@
       headerText: c5Header,
       headerColor: '#FF9933', bodyColor: '#2b2b2b', strokeColor: '#FF9933', fillColor: '#FFF9F2',
       bodyRaw: c5BodyRaw,
-      headerSize: 18, bodySize: 11, headerSpacing: 12, lineHeight: 15,
+      headerSize: 18, bodySize: 11, headerSpacing: 22, lineHeight: 14,
       hasRegular, hasBold,
     });
     top = c5Bottom + 24;
 
-    // Карточка С3 (Циан) - выводится, если есть нарушения
+    // Карточка С3 (Циан)
     const c3Items = (result.c3Groups.summary || []);
     if (c3Items.length > 0) {
       const c3Header = 'С3';
@@ -308,7 +307,7 @@
         headerText: c3Header,
         headerColor: '#00BCD4', bodyColor: '#2b2b2b', strokeColor: '#00BCD4', fillColor: '#F0FAFB',
         bodyRaw: c3BodyRaw,
-        headerSize: 18, bodySize: 11, headerSpacing: 12, lineHeight: 15,
+        headerSize: 18, bodySize: 11, headerSpacing: 22, lineHeight: 14,
         hasRegular, hasBold,
       });
     }
