@@ -124,11 +124,18 @@
     return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
   }
 
-  function drawRoundedCard(doc, x, y, w, h, strokeHex) {
-    const [r, g, b] = hexToRgb(strokeHex || '#CCCCCC');
-    doc.setDrawColor(r, g, b);
+  function drawRoundedCard(doc, x, y, w, h, strokeHex, fillHex) {
+    const [sr, sg, sb] = hexToRgb(strokeHex || '#CCCCCC');
+    doc.setDrawColor(sr, sg, sb);
     doc.setLineWidth(1.2);
-    doc.roundedRect(x, y, w, h, 12, 12, 'S');
+    
+    if (fillHex) {
+      const [fr, fg, fb] = hexToRgb(fillHex);
+      doc.setFillColor(fr, fg, fb);
+      doc.roundedRect(x, y, w, h, 24, 24, 'FD'); // Заливка и контур, 24px скругление
+    } else {
+      doc.roundedRect(x, y, w, h, 24, 24, 'S'); // Только контур
+    }
   }
 
   function drawLinesWithBoldCounts(doc, lines, x, startY, lineHeight, hasRegular, hasBold) {
@@ -155,28 +162,28 @@
   function renderTopCard(doc, params) {
     const {
       left, top, innerWidth,
-      headerText, headerColor, bodyColor, strokeColor, bodyRaw,
-      headerSize = 16, bodySize = 11, headerSpacing = 12, lineHeight = 11,
+      headerText, headerColor, bodyColor, strokeColor, fillColor, bodyRaw,
+      headerSize = 16, bodySize = 11, headerSpacing = 12, lineHeight = 14,
       hasRegular, hasBold,
     } = params;
 
-    const pad = 10;
+    const pad = 16; // Увеличенный внутренний отступ для воздуха
     setFontRegular(doc, hasRegular);
     doc.setFontSize(bodySize);
-    const bodyLines = doc.splitTextToSize(bodyRaw, innerWidth);
+    const bodyLines = doc.splitTextToSize(bodyRaw, innerWidth - pad * 2);
     const contentH = headerSize + headerSpacing + (bodyLines.length * lineHeight);
     const cardH = pad * 2 + contentH;
     const cardX = left - pad;
     const cardY = top;
     const cardW = innerWidth + pad * 2;
 
-    drawRoundedCard(doc, cardX, cardY, cardW, cardH, strokeColor);
+    drawRoundedCard(doc, cardX, cardY, cardW, cardH, strokeColor, fillColor);
 
     // Заголовок
     doc.setFontSize(headerSize);
     doc.setTextColor(headerColor);
     setFontBold(doc, hasBold, hasRegular);
-    doc.text(headerText, left, cardY + pad + headerSize);
+    doc.text(headerText, left, cardY + pad + headerSize - 2);
 
     // Тело
     setFontRegular(doc, hasRegular);
@@ -225,85 +232,83 @@
    * Рендерит одну страницу (одну пиццерию) в PDF-документе.
    */
   function renderPizzeriaPage(doc, result, topN, meta, logo, hasRegular, hasBold) {
-    const pageW = doc.internal.pageSize.getWidth();  // 842
-    const pageH = doc.internal.pageSize.getHeight();  // 595
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
 
-    // Логотип в правом нижнем углу
+    // 1. Заливаем фон всей страницы светло-серым
+    doc.setFillColor(244, 245, 247); // #F4F5F7
+    doc.rect(0, 0, pageW, pageH, 'F');
+
+    const left = 48;
+    let top = 48;
+    const innerWidth = pageW - left * 2;
+
+    // 2. Шапка: Текст слева, Логотип справа
     if (logo) {
       try {
-        const targetW = 60;
+        const targetW = 140; // Более широкий размер для прямоугольного логотипа
         const ratio = logo.heightPx && logo.widthPx ? (logo.heightPx / logo.widthPx) : 0.3;
         const targetH = targetW * ratio;
-        doc.addImage(logo.dataUrl, 'PNG', pageW - targetW - 10, pageH - targetH - 10, targetW, targetH, undefined, 'FAST');
+        // Размещаем справа в шапке
+        doc.addImage(logo.dataUrl, 'PNG', pageW - targetW - left, top, targetW, targetH, undefined, 'FAST');
       } catch (_) { /* ignore */ }
     }
 
-    const left = 48;
-    let top = 44;
-    const innerWidth = pageW - left * 2;
-
     // Главный заголовок
-    doc.setFontSize(24);
+    doc.setFontSize(22);
     doc.setTextColor('#2b2b2b');
     setFontBold(doc, hasBold, hasRegular);
-    doc.text('Отчёт по онлайн-проверкам', pageW / 2, top, { align: 'center' });
-    top += 28;
+    doc.text('ТОП критических нарушений', left, top + 18);
 
-    // Название пиццерии
-    doc.setFontSize(20);
-    doc.setTextColor('#4f2150');
-    setFontBold(doc, hasBold, hasRegular);
-    doc.text(result.name, pageW / 2, top, { align: 'center' });
-    top += 22;
+    // Подзаголовок (Пиццерия | Период)
+    doc.setFontSize(14);
+    doc.setTextColor('#7A7A7A');
+    setFontRegular(doc, hasRegular);
+    const periodStr = meta && meta.period ? String(meta.period) : '';
+    const subheadText = periodStr ? `${result.name} | ${periodStr}` : result.name;
+    doc.text(subheadText, left, top + 40);
 
-    // Период
-    if (meta && meta.period) {
-      setFontRegular(doc, hasRegular);
-      doc.setFontSize(14);
-      doc.setTextColor('#4f2150');
-      doc.text(String(meta.period), pageW / 2, top, { align: 'center' });
-      top += 20;
-    }
+    top += 75; // Отступ от шапки до карточек
 
-    top += 6;
+    // 3. Блоки нарушений
 
-    // Карточка С10
-    const c10Header = `ТОП-${topN} С10:`;
-    const c10BodyRaw = buildTopText(c10Header, result.c10Groups, topN).split('\n').slice(1).join('\n');
+    // Карточка С10 (Красная)
+    const c10Header = 'С10';
+    const c10BodyRaw = buildTopText('', result.c10Groups, topN).split('\n').slice(1).join('\n').trim() || '—';
     const c10Bottom = renderTopCard(doc, {
       left, top, innerWidth,
       headerText: c10Header,
-      headerColor: '#FF4F4F', bodyColor: '#920000', strokeColor: '#FF4F4F',
+      headerColor: '#FF4F4F', bodyColor: '#2b2b2b', strokeColor: '#FF4F4F', fillColor: '#FFF2F2',
       bodyRaw: c10BodyRaw,
-      headerSize: 15, bodySize: 10, headerSpacing: 10, lineHeight: 10,
+      headerSize: 18, bodySize: 11, headerSpacing: 12, lineHeight: 15,
       hasRegular, hasBold,
     });
-    top = c10Bottom + 10;
+    top = c10Bottom + 24; // Увеличенный внешний отступ (воздух) между карточками
 
-    // Карточка С5
-    const c5Header = `ТОП-${topN} С5:`;
-    const c5BodyRaw = buildTopText(c5Header, result.c5Groups, topN).split('\n').slice(1).join('\n');
+    // Карточка С5 (Оранжевая)
+    const c5Header = 'С5';
+    const c5BodyRaw = buildTopText('', result.c5Groups, topN).split('\n').slice(1).join('\n').trim() || '—';
     const c5Bottom = renderTopCard(doc, {
       left, top, innerWidth,
       headerText: c5Header,
-      headerColor: '#FF9933', bodyColor: '#a44400', strokeColor: '#FF9933',
+      headerColor: '#FF9933', bodyColor: '#2b2b2b', strokeColor: '#FF9933', fillColor: '#FFF9F2',
       bodyRaw: c5BodyRaw,
-      headerSize: 15, bodySize: 10, headerSpacing: 10, lineHeight: 10,
+      headerSize: 18, bodySize: 11, headerSpacing: 12, lineHeight: 15,
       hasRegular, hasBold,
     });
-    top = c5Bottom + 10;
+    top = c5Bottom + 24;
 
-    // Карточка С3 (если есть нарушения)
+    // Карточка С3 (Циан) - выводится, если есть нарушения
     const c3Items = (result.c3Groups.summary || []);
     if (c3Items.length > 0) {
-      const c3Header = 'С3:';
-      const c3BodyRaw = buildTopText(c3Header, result.c3Groups, topN).split('\n').slice(1).join('\n');
+      const c3Header = 'С3';
+      const c3BodyRaw = buildTopText('', result.c3Groups, topN).split('\n').slice(1).join('\n').trim() || '—';
       renderTopCard(doc, {
         left, top, innerWidth,
         headerText: c3Header,
-        headerColor: '#66BB6A', bodyColor: '#2e7d32', strokeColor: '#66BB6A',
+        headerColor: '#00BCD4', bodyColor: '#2b2b2b', strokeColor: '#00BCD4', fillColor: '#F0FAFB',
         bodyRaw: c3BodyRaw,
-        headerSize: 15, bodySize: 10, headerSpacing: 10, lineHeight: 10,
+        headerSize: 18, bodySize: 11, headerSpacing: 12, lineHeight: 15,
         hasRegular, hasBold,
       });
     }
