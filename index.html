@@ -3,10 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Анализатор PDF: группы С5 и С10</title>
+    <title>Анализатор отчётов: С3, С5, С10</title>
     <link rel="stylesheet" href="./styles/styles.css" />
-    <!-- PDF.js (без воркера, отключим в app.js) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js" crossorigin="anonymous"></script>
     <!-- jsPDF для генерации PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
     <!-- Наш модуль PDF -->
@@ -17,35 +15,26 @@
   <body>
     <main class="container">
       <section class="card">
-        <h1>Анализатор отчетов пиццерии</h1>
-        <p class="muted">Загрузите PDF-отчет или текст для автоматического формирования топа нарушений.</p>
+        <h1>Анализатор отчётов пиццерии</h1>
+        <p class="muted">Загрузите .txt файл или вставьте текст из CRM для автоматического формирования топа нарушений.</p>
 
-        <div class="mode-switch" role="tablist" aria-label="Способ ввода">
-          <button id="modePdfBtn" class="seg active" role="tab" aria-selected="true">PDF</button>
-          <button id="modeTextBtn" class="seg" role="tab" aria-selected="false">Текст</button>
+        <!-- Зона ввода текста с drag-and-drop для .txt -->
+        <div id="dropZone" class="drop-zone-text">
+          <textarea id="textAreaInput" class="text-area" rows="12"
+            placeholder="Вставьте текст из CRM или перетащите .txt файл сюда…&#10;&#10;Пример формата:&#10;Балтийск-1 (💖 XFOOD)&#10;C-10 описание нарушения *1&#10;C-5 щепотка *2"></textarea>
+          <input id="txtFileInput" type="file" accept=".txt,text/plain" />
         </div>
 
-        <div id="inputPdf" class="input-mode">
-          <div id="dropZone" class="drop-zone">
-            <div class="drop-zone-content">
-              <div class="drop-zone-icon">📄</div>
-              <div class="drop-zone-text">
-                <span class="drop-zone-primary">Перетащите PDF файл сюда</span>
-                <span class="drop-zone-secondary">или нажмите для выбора</span>
-              </div>
-            </div>
-            <input id="pdfInput" type="file" accept="application/pdf" style="display: none;" />
-          </div>
+        <div class="input-actions">
+          <button id="analyzeTextBtn" class="button" type="button">
+            <span class="icon">analytics</span>Анализировать
+          </button>
+          <label class="button ghost" for="txtFileInput">
+            <span class="icon">upload_file</span>Загрузить .txt
+          </label>
         </div>
 
-        <div id="inputText" class="input-mode hidden">
-          <textarea id="textAreaInput" class="text-area" rows="8" placeholder="Вставьте текст для анализа…"></textarea>
-          <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
-            <button id="analyzeTextBtn" class="button" type="button">Анализировать текст</button>
-            <span class="muted" style="font-size:12px;">Вставьте содержимое отчёта. Форматирование строк сохраняется.</span>
-          </div>
-        </div>
-
+        <!-- DEV-переключатели -->
         <div class="control-row">
           <label id="labelToggleGroupDetails" class="dev-only hidden">
             <input id="toggleGroupDetails" type="checkbox" /> Показывать строки внутри категорий
@@ -55,6 +44,7 @@
           </label>
         </div>
 
+        <!-- Элементы управления -->
         <div class="controls">
           <div class="control">
             <label for="topSelect">Выбор ТОП</label>
@@ -63,17 +53,6 @@
               <option value="5">ТОП-5</option>
               <option value="10">ТОП-10</option>
             </select>
-            <div id="errTop" class="error-text hidden"></div>
-          </div>
-
-          <div class="control">
-            <label for="storeSelect">Пиццерия</label>
-            <input id="storeSearch" class="input" type="text" placeholder="Поиск…" />
-            <select id="storeSelect" class="select">
-              <option value="">— выбрать —</option>
-            </select>
-            <div id="storeResults" class="dropdown hidden"></div>
-            <div id="errStore" class="error-text hidden"></div>
           </div>
 
           <div class="control">
@@ -86,92 +65,49 @@
 
           <div class="btns-row">
             <button id="previewPdfBtn" class="button" type="button"><span class="icon">visibility</span>Предпросмотр</button>
-            <button id="downloadPdfBtn" class="button ghost" type="button"><span class="icon">download</span>Скачать</button>
+            <button id="downloadPdfBtn" class="button ghost" type="button"><span class="icon">download</span>Скачать PDF</button>
             <button id="textReportBtn" class="button ghost" type="button"><span class="icon">description</span>Текстовый отчёт</button>
           </div>
         </div>
 
         <div id="rulesBanner" class="rules-banner hidden">
           <div class="rules-banner-title">База категорий не загружена</div>
-          <div class="rules-banner-desc">Положите файлы правил рядом со страницей: <code>rules_c5.txt</code> и <code>rules_c10.txt</code>, или загрузите ниже вручную.</div>
+          <div class="rules-banner-desc">Положите файлы правил рядом со страницей (<code>rules_c5.txt</code>, <code>rules_c10.txt</code>) или загрузите ниже вручную. С3 — опционально.</div>
           <div class="rules-actions">
-            <label class="button ghost">Загрузить C5
-              <input id="rulesC5File" type="file" accept=".txt" />
-            </label>
             <label class="button ghost">Загрузить C10
               <input id="rulesC10File" type="file" accept=".txt" />
             </label>
-            <span id="rulesStatus" class="file-name">C5: —, C10: —</span>
+            <label class="button ghost">Загрузить C5
+              <input id="rulesC5File" type="file" accept=".txt" />
+            </label>
+            <label class="button ghost">Загрузить C3
+              <input id="rulesC3File" type="file" accept=".txt" />
+            </label>
           </div>
+          <div id="rulesStatus" class="file-name" style="margin-top:8px;">C10: —, C5: —, C3: —</div>
         </div>
 
         <div id="status" class="status"></div>
       </section>
 
+      <!-- Результаты анализа -->
       <section id="results" class="results hidden">
         <div class="summary">
-          <div><strong>Страниц:</strong> <span id="pagesCount">–</span></div>
-          <div><strong>Совпадений С5:</strong> <span id="c5Count">0</span></div>
-          <div><strong>Совпадений С10:</strong> <span id="c10Count">0</span></div>
+          <div><strong>Пиццерий:</strong> <span id="pizzeriaCount">0</span></div>
+          <div><strong>Всего С10:</strong> <span id="totalC10">0</span></div>
+          <div><strong>Всего С5:</strong> <span id="totalC5">0</span></div>
+          <div><strong>Всего С3:</strong> <span id="totalC3">0</span></div>
         </div>
+        <div id="pizzeriaResults"></div>
+      </section>
 
-        <details open>
-          <summary>Категории С5 (<span id="c5GroupedTotal">0</span>)</summary>
-          <ol id="groupC5List" class="result-list"></ol>
-        </details>
-
-        <details>
-          <summary>Категории С10 (<span id="c10GroupedTotal">0</span>)</summary>
-          <ol id="groupC10List" class="result-list"></ol>
-        </details>
-
-        <details id="devUngroupedC5" class="hidden">
-          <summary>Без категории С5</summary>
-          <ol id="ungroupedC5" class="result-list"></ol>
-        </details>
-
-        <details id="devUngroupedC10" class="hidden">
-          <summary>Без категории С10</summary>
-          <ol id="ungroupedC10" class="result-list"></ol>
-        </details>
-
-        <details id="devListC5" class="hidden">
-          <summary>Строки с С5 (<span id="c5CountInline">0</span>)</summary>
-          <ol id="listC5" class="result-list"></ol>
-        </details>
-
-        <details id="devListC10" class="hidden">
-          <summary>Строки с С10 (<span id="c10CountInline">0</span>)</summary>
-          <ol id="listC10" class="result-list"></ol>
-        </details>
-
-        <!-- Текстовый отчёт -->
-        <section id="textReportSection" class="card hidden" style="margin-top:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <h3 style="margin:0;">Текстовый отчёт</h3>
-            <button id="copyTextReportBtn" class="button ghost" type="button" title="Копировать"><span class="icon">content_copy</span>Копировать</button>
-          </div>
-          <pre id="textReport" class="text-report" style="margin-top:10px; white-space:pre-wrap; word-break:break-word;"></pre>
-        </section>
-
-        <!-- DEV: статистика по файлам правил -->
-        <section id="devRulesStats" class="card dev-only hidden" style="margin-top:16px;">
-          <h3>Статистика словарей категорий</h3>
-          <div class="summary">
-            <div><strong>C5: групп</strong> <span id="rulesC5GroupsCount">0</span></div>
-            <div><strong>C10: групп</strong> <span id="rulesC10GroupsCount">0</span></div>
-          </div>
-          <div class="grid-2" style="gap:16px; margin-top:10px;">
-            <div>
-              <h4 style="margin:4px 0;">Категории C5</h4>
-              <ol id="rulesC5GroupsList" class="result-list"></ol>
-            </div>
-            <div>
-              <h4 style="margin:4px 0;">Категории C10</h4>
-              <ol id="rulesC10GroupsList" class="result-list"></ol>
-            </div>
-          </div>
-        </section>
+      <!-- Текстовый отчёт -->
+      <section id="textReportSection" class="card hidden" style="margin-top:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <h3 style="margin:0;">Текстовый отчёт</h3>
+          <button id="copyTextReportBtn" class="button ghost" type="button" title="Копировать"><span class="icon">content_copy</span>Копировать</button>
+        </div>
+        <pre id="textReport" class="text-report" style="margin-top:10px; white-space:pre-wrap; word-break:break-word;"></pre>
       </section>
     </main>
 
@@ -186,4 +122,4 @@
     <script src="./js/app.js"></script>
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   </body>
-  </html>
+</html>
