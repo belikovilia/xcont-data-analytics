@@ -111,9 +111,9 @@
     } else {
       for (const it of items) {
         lines.push(`- ${it.title}: ${it.count} ${ruTimesWord(it.count)}`);
-        lines.push('');
+        lines.push(''); // Пустая строка для отступа между элементами списка
       }
-      if (lines[lines.length - 1] === '') lines.pop();
+      if (lines[lines.length - 1] === '') lines.pop(); // Убираем последнюю пустую строку
     }
     return lines.join('\n');
   }
@@ -163,7 +163,7 @@
     const {
       left, top, innerWidth,
       headerText, headerColor, bodyColor, strokeColor, fillColor, bodyRaw,
-      headerSize = 16, bodySize = 11, headerSpacing = 22, lineHeight = 14,
+      headerSize = 16, bodySize = 11, headerSpacing = 20, lineHeight = 14,
       hasRegular, hasBold,
     } = params;
 
@@ -171,6 +171,8 @@
     setFontRegular(doc, hasRegular);
     doc.setFontSize(bodySize);
     const bodyLines = doc.splitTextToSize(bodyRaw, innerWidth - pad * 2);
+    
+    // Считаем высоту контента и самой карточки
     const contentH = headerSize + headerSpacing + (bodyLines.length * lineHeight);
     const cardH = pad * 2 + contentH;
     const cardX = left - pad;
@@ -254,20 +256,21 @@
     }
 
     // Главный заголовок
-    doc.setFontSize(22);
+    doc.setFontSize(20);
     doc.setTextColor('#2b2b2b');
     setFontBold(doc, hasBold, hasRegular);
-    doc.text('ТОП критических нарушений', left, top + 18);
+    doc.text('ТОП критических нарушений', left, top + 20);
 
-    // Подзаголовок (Пиццерия | Период)
-    doc.setFontSize(14);
+    // Подзаголовок
+    doc.setFontSize(16);
     doc.setTextColor('#7A7A7A');
-    setFontRegular(doc, hasRegular);
+    setFontBold(doc, hasBold, hasRegular);
     const periodStr = meta && meta.period ? String(meta.period) : '';
     const subheadText = periodStr ? `${result.name} | ${periodStr}` : result.name;
-    doc.text(subheadText, left, top + 40);
+    doc.text(subheadText, left, top + 42);
 
-    top += 75; // Отступ от шапки до карточек
+    // Отступ до контента
+    top += 70; 
 
     // 3. Блоки нарушений
 
@@ -279,10 +282,10 @@
       headerText: c10Header,
       headerColor: '#FF4F4F', bodyColor: '#2b2b2b', strokeColor: '#FF4F4F', fillColor: '#FFF2F2',
       bodyRaw: c10BodyRaw,
-      headerSize: 18, bodySize: 11, headerSpacing: 22, lineHeight: 14,
+      headerSize: 18, bodySize: 11, headerSpacing: 20, lineHeight: 14, 
       hasRegular, hasBold,
     });
-    top = c10Bottom + 24; 
+    top = c10Bottom + 16; 
 
     // Карточка С5 (Оранжевая)
     const c5Header = 'С5';
@@ -292,10 +295,10 @@
       headerText: c5Header,
       headerColor: '#FF9933', bodyColor: '#2b2b2b', strokeColor: '#FF9933', fillColor: '#FFF9F2',
       bodyRaw: c5BodyRaw,
-      headerSize: 18, bodySize: 11, headerSpacing: 22, lineHeight: 14,
+      headerSize: 18, bodySize: 11, headerSpacing: 20, lineHeight: 14,
       hasRegular, hasBold,
     });
-    top = c5Bottom + 24;
+    top = c5Bottom + 16; 
 
     // Карточка С3 (Циан)
     const c3Items = (result.c3Groups.summary || []);
@@ -307,7 +310,7 @@
         headerText: c3Header,
         headerColor: '#00BCD4', bodyColor: '#2b2b2b', strokeColor: '#00BCD4', fillColor: '#F0FAFB',
         bodyRaw: c3BodyRaw,
-        headerSize: 18, bodySize: 11, headerSpacing: 22, lineHeight: 14,
+        headerSize: 18, bodySize: 11, headerSpacing: 20, lineHeight: 14,
         hasRegular, hasBold,
       });
     }
