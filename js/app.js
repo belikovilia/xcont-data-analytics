@@ -189,7 +189,27 @@
      Загрузка правил (словарей категорий)
      ────────────────────────────────────────────────────────────── */
   let rules = { C3: [], C5: [], C10: [] };
+  let compiledRules = { C3: [], C5: [], C10: [] };
   let rulesLoaded = { c3: false, c5: false, c10: false };
+
+  function compileRules(groups) {
+    return groups.map(g => {
+      const compiledValues = g.values.map(keyword => {
+        if (!keyword) return null;
+        const norm = normalizeForRegex(keyword);
+        const tokens = norm.split(' ').filter(Boolean);
+        return {
+          keyword,
+          tokens,
+          rx: keywordToRegex(keyword)
+        };
+      }).filter(Boolean);
+      return {
+        title: g.title,
+        values: compiledValues
+      };
+    });
+  }
 
   function updateRulesStatus() {
     const status = document.getElementById('rulesStatus');
@@ -230,14 +250,17 @@
 
       if (c3Res.status === 'fulfilled' && c3Res.value && c3Res.value.ok) {
         rules.C3 = parseRules(await c3Res.value.text());
+        compiledRules.C3 = compileRules(rules.C3);
         rulesLoaded.c3 = true;
       }
       if (c5Res.status === 'fulfilled' && c5Res.value && c5Res.value.ok) {
         rules.C5 = parseRules(await c5Res.value.text());
+        compiledRules.C5 = compileRules(rules.C5);
         rulesLoaded.c5 = true;
       }
       if (c10Res.status === 'fulfilled' && c10Res.value && c10Res.value.ok) {
         rules.C10 = parseRules(await c10Res.value.text());
+        compiledRules.C10 = compileRules(rules.C10);
         rulesLoaded.c10 = true;
       }
     } catch (_) {
@@ -261,6 +284,7 @@
           try {
             const text = await file.text();
             rules[categoryKey] = parseRules(text);
+            compiledRules[categoryKey] = compileRules(rules[categoryKey]);
             rulesLoaded[categoryKey.toLowerCase()] = true;
             updateRulesStatus();
             showToast('success', `Правила ${categoryKey} загружены`);
@@ -308,7 +332,7 @@
    * Группирует нарушения по правилам (keywords → категории).
    * Возвращает { summary: [{title, count}], details: Map, ungrouped: [] }
    */
-  function buildGroupCounters(items, groupSpec) {
+  function buildGroupCounters(items, compiledGroupSpec) {
     const counters = new Map();
     const byGroupMatchedItems = new Map();
     const index = items.map(x => ({
@@ -318,16 +342,30 @@
       count: x.count,
     }));
 
-    for (const { title, values } of groupSpec) {
+    const accountedItemIdx = new Set();
+
+    for (const { title, values } of compiledGroupSpec) {
+      if (accountedItemIdx.size === index.length) break;
+
       let sum = 0;
-      const accountedItemIdx = new Set();
       const matchedForGroup = [];
-      for (const keyword of values) {
-        if (!keyword) continue;
-        const rx = keywordToRegex(keyword);
+      for (const { rx, tokens } of values) {
+        if (accountedItemIdx.size === index.length) break;
+
         for (let i = 0; i < index.length; i += 1) {
           if (accountedItemIdx.has(i)) continue;
           const item = index[i];
+
+          // Fast pre-filter using simple string operations
+          let possible = true;
+          for (const tok of tokens) {
+            if (!item.textRx.includes(tok)) {
+              possible = false;
+              break;
+            }
+          }
+          if (!possible) continue;
+
           if (rx.test(item.textRx)) {
             sum += item.count;
             accountedItemIdx.add(i);
@@ -393,9 +431,9 @@
      ────────────────────────────────────────────────────────────── */
   function analyzeBlocks(blocks) {
     return blocks.map(block => {
-      const c5Groups  = rules.C5.length > 0 ? buildGroupCounters(block.c5, rules.C5)   : buildSimpleList(block.c5);
-      const c10Groups = rules.C10.length > 0 ? buildGroupCounters(block.c10, rules.C10) : buildSimpleList(block.c10);
-      const c3Groups  = rules.C3.length > 0 ? buildGroupCounters(block.c3, rules.C3)    : buildSimpleList(block.c3);
+      const c5Groups  = compiledRules.C5.length > 0 ? buildGroupCounters(block.c5, compiledRules.C5)   : buildSimpleList(block.c5);
+      const c10Groups = compiledRules.C10.length > 0 ? buildGroupCounters(block.c10, compiledRules.C10) : buildSimpleList(block.c10);
+      const c3Groups  = compiledRules.C3.length > 0 ? buildGroupCounters(block.c3, compiledRules.C3)    : buildSimpleList(block.c3);
 
       return {
         name: block.name,
