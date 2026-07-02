@@ -190,7 +190,7 @@
      ────────────────────────────────────────────────────────────── */
   let rules = { C3: [], C5: [], C10: [] };
   let compiledRules = { C3: [], C5: [], C10: [] };
-  let rulesLoaded = { c3: false, c5: false, c10: false };
+  let rulesLoaded = { c5: false, c10: false };
 
   function compileRules(groups) {
     return groups.map(g => {
@@ -214,7 +214,7 @@
   function updateRulesStatus() {
     const status = document.getElementById('rulesStatus');
     if (status) {
-      status.textContent = `C10: ${rulesLoaded.c10 ? 'ОК' : '—'}, C5: ${rulesLoaded.c5 ? 'ОК' : '—'}, C3: ${rulesLoaded.c3 ? 'ОК' : '—'}`;
+      status.textContent = `C10: ${rulesLoaded.c10 ? 'ОК' : '—'}, C5: ${rulesLoaded.c5 ? 'ОК' : '—'}`;
     }
     const banner = document.getElementById('rulesBanner');
     if (banner) {
@@ -242,34 +242,109 @@
 
   async function loadRulesFromFiles() {
     try {
-      const [c3Res, c5Res, c10Res] = await Promise.allSettled([
-        fetch('data/rules_c3.txt'),
+      const [c5Res, c10Res] = await Promise.allSettled([
         fetch('data/rules_c5.txt'),
         fetch('data/rules_c10.txt'),
       ]);
 
-      if (c3Res.status === 'fulfilled' && c3Res.value && c3Res.value.ok) {
-        rules.C3 = parseRules(await c3Res.value.text());
-        compiledRules.C3 = compileRules(rules.C3);
-        rulesLoaded.c3 = true;
-      }
       if (c5Res.status === 'fulfilled' && c5Res.value && c5Res.value.ok) {
         rules.C5 = parseRules(await c5Res.value.text());
         compiledRules.C5 = compileRules(rules.C5);
         rulesLoaded.c5 = true;
+        if (worker) worker.postMessage({ type: 'SET_RULES', payload: { C5: rules.C5 } });
       }
       if (c10Res.status === 'fulfilled' && c10Res.value && c10Res.value.ok) {
         rules.C10 = parseRules(await c10Res.value.text());
         compiledRules.C10 = compileRules(rules.C10);
         rulesLoaded.c10 = true;
+        if (worker) worker.postMessage({ type: 'SET_RULES', payload: { C10: rules.C10 } });
       }
     } catch (_) {
       // ignore
     } finally {
-      debugLog('RULES_LOADED', { c3: rulesLoaded.c3, c5: rulesLoaded.c5, c10: rulesLoaded.c10 });
+      debugLog('RULES_LOADED', { c5: rulesLoaded.c5, c10: rulesLoaded.c10 });
       updateRulesStatus();
     }
   }
+
+  /* ──────────────────────────────────────────────────────────────
+     Инициализация Web Worker
+     ────────────────────────────────────────────────────────────── */
+  let analysisOnDone = null;
+  let worker = null;
+
+  function initWorker() {
+    try {
+      const workerCode = `
+        const rules = { C3: [], C5: [], C10: [] };
+        const compiledRules = { C3: [], C5: [], C10: [] };
+
+        const debugLog = function(...args) {};
+
+        const escapeRegExp = ${escapeRegExp.toString()};
+        const latinToCyrillic = ${latinToCyrillic.toString()};
+        const normalizeText = ${normalizeText.toString()};
+        const normalizeForMatch = ${normalizeForMatch.toString()};
+        const normalizeForRegex = ${normalizeForRegex.toString()};
+        const cleanPizzeriaName = ${cleanPizzeriaName.toString()};
+        const parseViolationLine = ${parseViolationLine.toString()};
+        const parseBlocks = ${parseBlocks.toString()};
+        const keywordToRegex = ${keywordToRegex.toString()};
+        const compileRules = ${compileRules.toString()};
+        const buildGroupCounters = ${buildGroupCounters.toString()};
+        const buildSimpleList = ${buildSimpleList.toString()};
+        const analyzeBlocks = ${analyzeBlocks.toString()};
+
+        self.onmessage = function (e) {
+          const { type, payload } = e.data;
+          if (type === 'SET_RULES') {
+            const newRules = payload;
+            if (newRules.C3) { rules.C3 = newRules.C3; compiledRules.C3 = compileRules(newRules.C3); }
+            if (newRules.C5) { rules.C5 = newRules.C5; compiledRules.C5 = compileRules(newRules.C5); }
+            if (newRules.C10) { rules.C10 = newRules.C10; compiledRules.C10 = compileRules(newRules.C10); }
+          } else if (type === 'ANALYZE') {
+            try {
+              const blocks = parseBlocks(payload);
+              if (blocks.length === 0) {
+                self.postMessage({ type: 'ERROR', payload: 'Не удалось найти блоки пиццерий в тексте' });
+                return;
+              }
+              const results = analyzeBlocks(blocks);
+              self.postMessage({ type: 'RESULT', payload: results });
+            } catch (err) {
+              self.postMessage({ type: 'ERROR', payload: err.message });
+            }
+          }
+        };
+      `;
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      worker = new Worker(URL.createObjectURL(blob));
+
+      worker.onmessage = function (e) {
+        const { type, payload } = e.data;
+        if (type === 'RESULT') {
+          renderAllResults(payload);
+          if (analysisOnDone) {
+            analysisOnDone();
+            analysisOnDone = null;
+          }
+        } else if (type === 'ERROR') {
+          showToast('error', payload);
+          const preloader = document.getElementById('preloader');
+          if (preloader) preloader.classList.add('hidden');
+          setStatus('Ошибка при анализе текста');
+          if (analysisOnDone) {
+            analysisOnDone();
+            analysisOnDone = null;
+          }
+        }
+      };
+    } catch (err) {
+      console.error('Failed to initialize Web Worker, falling back to synchronous execution', err);
+    }
+  }
+
+  initWorker();
 
   // Автозагрузка правил при старте
   loadRulesFromFiles();
@@ -286,6 +361,7 @@
             rules[categoryKey] = parseRules(text);
             compiledRules[categoryKey] = compileRules(rules[categoryKey]);
             rulesLoaded[categoryKey.toLowerCase()] = true;
+            if (worker) worker.postMessage({ type: 'SET_RULES', payload: { [categoryKey]: rules[categoryKey] } });
             updateRulesStatus();
             showToast('success', `Правила ${categoryKey} загружены`);
           } catch (err) {
@@ -296,7 +372,6 @@
       });
     }
   }
-  setupRuleUpload('rulesC3File', 'C3');
   setupRuleUpload('rulesC5File', 'C5');
   setupRuleUpload('rulesC10File', 'C10');
 
@@ -660,30 +735,31 @@
     preloader.classList.remove('hidden');
     loaderText.textContent = 'Анализ…';
 
-    // Откладываем тяжёлую работу на следующий кадр,
-    // чтобы прелоадер успел отрисоваться
-    setTimeout(() => {
-      try {
-        const blocks = parseBlocks(text);
-        debugLog('BLOCKS', blocks.length, blocks.map(b => b.name));
+    analysisOnDone = onDone;
 
-        if (blocks.length === 0) {
+    if (worker) {
+      worker.postMessage({ type: 'ANALYZE', payload: text });
+    } else {
+      setTimeout(() => {
+        try {
+          const blocks = parseBlocks(text);
+          if (blocks.length === 0) {
+            preloader.classList.add('hidden');
+            showToast('warning', 'Не удалось найти блоки пиццерий в тексте');
+            setStatus('Блоки пиццерий не найдены');
+            return;
+          }
+          const results = analyzeBlocks(blocks);
+          renderAllResults(results);
+        } catch (err) {
+          console.error(err);
           preloader.classList.add('hidden');
-          showToast('warning', 'Не удалось найти блоки пиццерий в тексте');
-          setStatus('Блоки пиццерий не найдены');
-          return;
+          setStatus('Ошибка при анализе текста');
+        } finally {
+          if (onDone) onDone();
         }
-
-        const results = analyzeBlocks(blocks);
-        renderAllResults(results);
-      } catch (err) {
-        console.error(err);
-        document.getElementById('preloader').classList.add('hidden');
-        setStatus('Ошибка при анализе текста');
-      } finally {
-        if (onDone) onDone();
-      }
-    }, 0);
+      }, 0);
+    }
   }
 
   /* ──────────────────────────────────────────────────────────────
